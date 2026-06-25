@@ -57,6 +57,24 @@ cd ai-ml-dev-bootstrap
 
 Windows 侧会安装基础桌面工具，并在 WSL2 Ubuntu 内配置真正的 AI/ML 开发环境。
 
+### Windows 11 已经装了 NVIDIA / CUDA 怎么办？
+
+这正是推荐路径：**保留 Windows 侧 NVIDIA 驱动，不要在 WSL2 里安装 Linux NVIDIA display driver**。WSL2 会把 Windows 驱动的 CUDA driver bridge 暴露到 Linux 发行版的 `/usr/lib/wsl/lib/`，包括 `libcuda.so` 和常见的 `/usr/lib/wsl/lib/nvidia-smi`。
+
+默认 bootstrap 会做 NVIDIA/WSL preflight，并在 WSL 内检测到 GPU 时安装 CUDA PyTorch wheel：
+
+```powershell
+.\scripts\bootstrap.ps1 -Profile personal
+```
+
+只有当你需要 `nvcc`、CUDA headers、native CUDA extension 编译或 CUDA samples 时，才启用 WSL 内的 CUDA Toolkit：
+
+```powershell
+.\scripts\bootstrap.ps1 -Profile personal -Features core,ai,conda,cuda-toolkit -CudaToolkitVersion 13-3
+```
+
+更多说明见 [`docs/WINDOWS_WSL_NVIDIA.md`](docs/WINDOWS_WSL_NVIDIA.md)。
+
 ### macOS
 
 ```bash
@@ -122,6 +140,7 @@ uv pip install -r requirements/base.txt
 | `conda` | ✅ | 安装 Miniforge，创建 `ai-native` conda 环境，作为 native deps fallback |
 | `mlsys` | ❌ | profiling/benchmark 工具，如 PyTorch Profiler 辅助、TensorBoard、Scalene、py-spy、memray、ONNX Runtime |
 | `containers` | ❌ | 安装/配置容器桌面工具；仓库内有 Dockerfile/compose/devcontainer 模板 |
+| `cuda-toolkit` | ❌ | 在 WSL2 Ubuntu 内安装 CUDA Toolkit toolchain，用于 `nvcc`/native CUDA 编译；不是 PyTorch 必需项 |
 | `cuda-extras` | ❌ | Linux/WSL NVIDIA CUDA 实验性额外包，如 bitsandbytes/xformers；失败会跳过 |
 | `all` | ❌ | 启用全部可选项 |
 
@@ -206,6 +225,8 @@ uv pip install -r requirements.txt
 │   ├── bootstrap-wsl.sh            # Windows WSL Ubuntu bootstrap
 │   ├── bootstrap-macos.sh          # macOS entrypoint
 │   ├── install-miniforge.sh        # Unix/WSL Miniforge installer
+│   ├── preflight-windows-nvidia.ps1 # Windows NVIDIA / WSL2 GPU bridge check
+│   ├── install-wsl-cuda-toolkit.sh  # optional WSL2 CUDA Toolkit toolchain
 │   ├── install-cuda-extras.sh      # optional Linux CUDA packages
 │   ├── verify.sh
 │   └── verify.ps1
@@ -229,6 +250,10 @@ uv pip install -r requirements.txt
 ├── .devcontainer/
 │   └── devcontainer.json
 └── docs/
+    ├── WINDOWS_WSL_NVIDIA.md       # Windows NVIDIA driver + WSL2 CUDA bridge
+    ├── ARCHITECTURE.md
+    ├── MLSYS_TOOLS.md
+    └── SECURITY_PROFILES.md
 ```
 
 ---

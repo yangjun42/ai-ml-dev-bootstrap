@@ -6,7 +6,17 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v nvidia-smi >/dev/null 2>&1 && [ ! -x /usr/lib/wsl/lib/nvidia-smi ]; then
+nvidia_smi() {
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi "$@"
+  elif [ -x /usr/lib/wsl/lib/nvidia-smi ]; then
+    /usr/lib/wsl/lib/nvidia-smi "$@"
+  else
+    return 127
+  fi
+}
+
+if ! nvidia_smi -L >/dev/null 2>&1; then
   echo "No NVIDIA GPU visible; skipping cuda-extras."
   exit 0
 fi

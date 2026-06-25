@@ -7,6 +7,7 @@ REPO_ROOT=""
 PYTHON_VERSION="3.12"
 PYTORCH_CUDA_INDEX="https://download.pytorch.org/whl/cu130"
 PYTORCH_CPU_INDEX="https://download.pytorch.org/whl/cpu"
+CUDA_TOOLKIT_VERSION="13-3"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -15,6 +16,7 @@ while [[ $# -gt 0 ]]; do
     --repo-root) REPO_ROOT="$2"; shift 2 ;;
     --python) PYTHON_VERSION="$2"; shift 2 ;;
     --pytorch-cuda-index) PYTORCH_CUDA_INDEX="$2"; shift 2 ;;
+    --cuda-toolkit-version) CUDA_TOOLKIT_VERSION="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -33,6 +35,34 @@ if [[ -z "$REPO_ROOT" ]]; then
 fi
 
 echo "[bootstrap-wsl] profile=${PROFILE} features=${FEATURES} repo=${REPO_ROOT}"
+
+
+# WSL2 maps the Windows NVIDIA driver into Linux under /usr/lib/wsl/lib.
+# This makes nvidia-smi/libcuda discoverable without installing a Linux NVIDIA driver.
+if [ -d /usr/lib/wsl/lib ]; then
+  export PATH="/usr/lib/wsl/lib:$PATH"
+  export LD_LIBRARY_PATH="/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}"
+  if ! grep -q 'WSL2 NVIDIA driver bridge' "$HOME/.bashrc" 2>/dev/null; then
+    cat >> "$HOME/.bashrc" <<'EOF'
+
+# WSL2 NVIDIA driver bridge: supplied by the Windows NVIDIA driver, not by a Linux display driver.
+if [ -d /usr/lib/wsl/lib ]; then
+  export PATH="/usr/lib/wsl/lib:$PATH"
+  export LD_LIBRARY_PATH="/usr/lib/wsl/lib:${LD_LIBRARY_PATH:-}"
+fi
+EOF
+  fi
+fi
+
+nvidia_smi() {
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nvidia-smi "$@"
+  elif [ -x /usr/lib/wsl/lib/nvidia-smi ]; then
+    /usr/lib/wsl/lib/nvidia-smi "$@"
+  else
+    return 127
+  fi
+}
 
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
@@ -84,6 +114,13 @@ if has_feature conda; then
   fi
 fi
 
+if nvidia_smi -L >/dev/null 2>&1; then
+  echo "[bootstrap-wsl] NVIDIA GPU visible through WSL2:"
+  nvidia_smi -L || true
+else
+  echo "[bootstrap-wsl] NVIDIA GPU not visible in WSL2. CPU PyTorch will be installed unless you update Windows driver/WSL and rerun."
+fi
+
 if has_feature ai; then
   TARGET="$HOME/projects/ai-ml-starter"
   mkdir -p "$TARGET"
@@ -92,7 +129,7 @@ if has_feature ai; then
   uv venv --python "$PYTHON_VERSION"
   uv pip install -r requirements/base.txt -r requirements/llm.txt -r requirements/dev.txt
 
-  if command -v nvidia-smi >/dev/null 2>&1 || [ -x /usr/lib/wsl/lib/nvidia-smi ]; then
+  if nvidia_smi -L >/dev/null 2>&1; then
     echo "NVIDIA GPU visible; installing PyTorch from ${PYTORCH_CUDA_INDEX}"
     uv pip install torch torchvision torchaudio --index-url "$PYTORCH_CUDA_INDEX"
   else
@@ -111,6 +148,10 @@ if has_feature ai; then
   fi
 
   uv run python scripts/check_env.py || true
+fi
+
+if has_feature cuda-toolkit; then
+  bash "$REPO_ROOT/scripts/install-wsl-cuda-toolkit.sh" "$CUDA_TOOLKIT_VERSION"
 fi
 
 if has_feature cuda-extras; then

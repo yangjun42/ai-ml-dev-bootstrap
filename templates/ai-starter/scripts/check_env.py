@@ -20,6 +20,18 @@ def run(cmd: list[str]) -> str | None:
         return None
 
 
+def run_nvidia_smi(args: list[str]) -> tuple[str | None, str | None]:
+    candidates = [
+        ["nvidia-smi", *args],
+        ["/usr/lib/wsl/lib/nvidia-smi", *args],
+    ]
+    for cmd in candidates:
+        output = run(cmd)
+        if output is not None:
+            return cmd[0], output
+    return None, None
+
+
 def main() -> None:
     info: dict[str, object] = {
         "python": sys.version.split()[0],
@@ -50,7 +62,9 @@ def main() -> None:
         if torch.cuda.is_available():
             info["torch_cuda_device"] = torch.cuda.get_device_name(0)
 
-    info["nvidia_smi"] = run(["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"])
+    smi_path, smi_output = run_nvidia_smi(["--query-gpu=name,driver_version", "--format=csv,noheader"])
+    info["nvidia_smi_path"] = smi_path
+    info["nvidia_smi"] = smi_output
     info["uv"] = run(["uv", "--version"])
     info["git"] = run(["git", "--version"])
 

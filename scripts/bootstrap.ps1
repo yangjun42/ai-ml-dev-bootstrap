@@ -19,6 +19,12 @@ param(
 
     [string]$PytorchCudaIndex = 'https://download.pytorch.org/whl/cu130',
 
+    # Only needed when you explicitly want nvcc / CUDA headers inside WSL.
+    # PyTorch CUDA wheels do not require this. Example values: 12-9, 13-3.
+    [string]$CudaToolkitVersion = '13-3',
+
+    [switch]$SkipNvidiaPreflight,
+
     [switch]$SkipWSL,
 
     [switch]$DryRun
@@ -80,6 +86,15 @@ if (Has-Feature 'containers') {
     }
 }
 
+if (-not $SkipNvidiaPreflight) {
+    Invoke-Step 'Preflight Windows NVIDIA driver and WSL2 GPU bridge' {
+        $Preflight = Join-Path $RepoRoot 'scripts\preflight-windows-nvidia.ps1'
+        if (Test-Path $Preflight) {
+            & $Preflight -Distro $Distro
+        }
+    }
+}
+
 if (-not $SkipWSL) {
     Invoke-Step 'Ensure WSL2 Ubuntu is installed' {
         if (-not (Test-Command wsl)) {
@@ -99,7 +114,7 @@ if (-not $SkipWSL) {
     Invoke-Step 'Run Linux bootstrap inside WSL' {
         $RepoRootWsl = (wsl -d $Distro -- wslpath -a "$RepoRoot").Trim()
         $ScriptWsl = (wsl -d $Distro -- wslpath -a (Join-Path $RepoRoot 'scripts\bootstrap-wsl.sh')).Trim()
-        wsl -d $Distro -- bash "$ScriptWsl" --profile "$Profile" --features "$FeatureCsv" --repo-root "$RepoRootWsl" --python "$PythonVersion" --pytorch-cuda-index "$PytorchCudaIndex"
+        wsl -d $Distro -- bash "$ScriptWsl" --profile "$Profile" --features "$FeatureCsv" --repo-root "$RepoRootWsl" --python "$PythonVersion" --pytorch-cuda-index "$PytorchCudaIndex" --cuda-toolkit-version "$CudaToolkitVersion"
     }
 }
 
