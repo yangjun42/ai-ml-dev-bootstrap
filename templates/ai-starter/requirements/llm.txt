@@ -1,0 +1,11 @@
+# Hugging Face / LLM tooling.
+transformers>=4
+datasets>=3
+accelerate>=1
+evaluate>=0.4
+safetensors>=0.4
+tokenizers>=0.20
+sentencepiece>=0.2
+peft>=0.13
+trl>=0.12
+huggingface-hub>=0.26

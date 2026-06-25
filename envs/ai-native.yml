@@ -1,0 +1,21 @@
+name: ai-native
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - uv
+  - pip
+  - git
+  - git-lfs
+  - cmake
+  - ninja
+  - pkg-config
+  - make
+  - ffmpeg
+  - hdf5
+  - openssl
+  - sqlite
+  - zlib
+  - pip:
+      - pip-audit

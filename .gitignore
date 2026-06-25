@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.env
+
+# Data/model artifacts
+data/
+models/
+mlruns/
+runs/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# OS/editors
+.DS_Store
+.vscode/
+.idea/
+
+# Conda
+.conda/

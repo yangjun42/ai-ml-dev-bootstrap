@@ -1,0 +1,15 @@
+services:
+  ai-ml-dev-gpu:
+    build:
+      context: ..
+      dockerfile: containers/Dockerfile.gpu-wheel
+    volumes:
+      - ../templates/ai-starter:/workspace
+    ports:
+      - "8888:8888"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    command: uv run jupyter lab --ip 0.0.0.0 --port 8888 --no-browser --allow-root

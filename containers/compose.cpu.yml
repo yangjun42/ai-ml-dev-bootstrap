@@ -1,0 +1,10 @@
+services:
+  ai-ml-dev:
+    build:
+      context: ..
+      dockerfile: containers/Dockerfile.cpu
+    volumes:
+      - ../templates/ai-starter:/workspace
+    ports:
+      - "8888:8888"
+    command: uv run jupyter lab --ip 0.0.0.0 --port 8888 --no-browser --allow-root

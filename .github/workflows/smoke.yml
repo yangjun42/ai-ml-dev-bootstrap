@@ -1,0 +1,16 @@
+name: smoke
+on:
+  push:
+  pull_request:
+
+jobs:
+  shellcheck-lite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax check
+        run: |
+          bash -n scripts/*.sh
+      - name: Python syntax check
+        run: |
+          python -m py_compile templates/ai-starter/scripts/*.py

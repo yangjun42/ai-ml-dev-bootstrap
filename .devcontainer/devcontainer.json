@@ -1,0 +1,18 @@
+{
+  "name": "AI/ML Dev Bootstrap CPU",
+  "build": {
+    "dockerfile": "../containers/Dockerfile.cpu",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "charliermarsh.ruff"
+      ]
+    }
+  },
+  "postCreateCommand": "uv run python scripts/check_env.py"
+}

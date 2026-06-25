@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv not found" >&2
+  exit 1
+fi
+
+if ! command -v nvidia-smi >/dev/null 2>&1 && [ ! -x /usr/lib/wsl/lib/nvidia-smi ]; then
+  echo "No NVIDIA GPU visible; skipping cuda-extras."
+  exit 0
+fi
+
+PROJECT="${1:-$HOME/projects/ai-ml-starter}"
+if [ ! -d "$PROJECT" ]; then
+  echo "Project not found: $PROJECT" >&2
+  exit 1
+fi
+
+cd "$PROJECT"
+
+# Keep this intentionally best-effort. These packages are ABI-sensitive.
+uv pip install -r requirements/cuda-extras-linux.txt || true
+
+echo "cuda-extras attempted. Verify with: uv run python scripts/check_env.py"

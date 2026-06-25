@@ -1,0 +1,17 @@
+name: geo-native
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - uv
+  - pip
+  - gdal
+  - geopandas
+  - rasterio
+  - shapely
+  - pyproj
+  - fiona
+  - hdf5
+  - netcdf4
+  - jupyterlab

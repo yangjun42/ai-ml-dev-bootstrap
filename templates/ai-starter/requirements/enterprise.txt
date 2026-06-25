@@ -1,0 +1,8 @@
+# Conservative local-first tooling.
+mlflow>=2.15
+dvc>=3
+pip-audit>=2
+cyclonedx-bom>=5
+bandit>=1.7
+detect-secrets>=1.5
+marimo>=0.9

@@ -1,0 +1,8 @@
+# Personal/free-data-egress tooling.
+mlflow>=2.15
+wandb>=0.18
+dvc>=3
+dvc-s3>=3
+gradio>=5
+streamlit>=1.38
+marimo>=0.9

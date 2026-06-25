@@ -1,0 +1,5 @@
+# Experimental Linux/WSL CUDA extras. Version compatibility depends on CUDA/PyTorch ABI.
+bitsandbytes>=0.45; sys_platform == "linux"
+xformers>=0.0.29; sys_platform == "linux"
+# flash-attn is intentionally not installed automatically. Install manually only after matching CUDA, PyTorch, and compiler:
+# uv pip install flash-attn --no-build-isolation
