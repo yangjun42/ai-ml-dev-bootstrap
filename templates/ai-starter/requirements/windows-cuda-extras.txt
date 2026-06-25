@@ -1,0 +1,5 @@
+# Windows-native CUDA/NVIDIA optional extras.
+# These are intentionally not installed by default because Windows CUDA extension builds
+# depend on the installed NVIDIA driver, CUDA Toolkit, Visual Studio Build Tools, and PyTorch ABI.
+nvidia-ml-py>=12; sys_platform == "win32"
+onnxruntime-gpu>=1.19; sys_platform == "win32"

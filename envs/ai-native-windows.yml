@@ -1,0 +1,15 @@
+name: ai-native-win
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - uv
+  - git
+  - git-lfs
+  - cmake
+  - ninja
+  - ffmpeg
+  - graphviz
+  - ipykernel
+  - pip

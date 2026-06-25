@@ -1,0 +1,1197 @@
+diff --git a/README.md b/README.md
+index fc6638e..f1b4557 100644
+--- a/README.md
++++ b/README.md
+@@ -43,16 +43,16 @@ git clone https://github.com/YOUR_ORG_OR_USER/ai-ml-dev-bootstrap.git
+ cd ai-ml-dev-bootstrap
+ 
+ # 个人开发版：默认 core, ai, conda
+-.\scripts\bootstrap.ps1 -Profile personal
++.\scripts\bootstrap.ps1 -Backend wsl -Profile personal
+ 
+ # 企业/受限版：默认 core, ai, conda，但更保守的环境变量和工具选择
+-.\scripts\bootstrap.ps1 -Profile enterprise
++.\scripts\bootstrap.ps1 -Backend wsl -Profile enterprise
+ 
+ # 可选：加 MLsys profiling/benchmark 工具
+-.\scripts\bootstrap.ps1 -Profile personal -Features core,ai,conda,mlsys
++.\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,mlsys
+ 
+ # 可选：再安装容器桌面工具
+-.\scripts\bootstrap.ps1 -Profile personal -Features core,ai,conda,containers
++.\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,containers
+ ```
+ 
+ Windows 侧会安装基础桌面工具，并在 WSL2 Ubuntu 内配置真正的 AI/ML 开发环境。
+@@ -64,17 +64,59 @@ Windows 侧会安装基础桌面工具，并在 WSL2 Ubuntu 内配置真正的 A
+ 默认 bootstrap 会做 NVIDIA/WSL preflight，并在 WSL 内检测到 GPU 时安装 CUDA PyTorch wheel：
+ 
+ ```powershell
+-.\scripts\bootstrap.ps1 -Profile personal
++.\scripts\bootstrap.ps1 -Backend wsl -Profile personal
+ ```
+ 
+ 只有当你需要 `nvcc`、CUDA headers、native CUDA extension 编译或 CUDA samples 时，才启用 WSL 内的 CUDA Toolkit：
+ 
+ ```powershell
+-.\scripts\bootstrap.ps1 -Profile personal -Features core,ai,conda,cuda-toolkit -CudaToolkitVersion 13-3
++.\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,cuda-toolkit -CudaToolkitVersion 13-3
+ ```
+ 
+ 更多说明见 [`docs/WINDOWS_WSL_NVIDIA.md`](docs/WINDOWS_WSL_NVIDIA.md)。
+ 
++
++### Windows 11：无 WSL / WSL 更新失败时的原生安装 fallback
++
++如果 `wsl --update` / `wsl --install` 在企业工作站或现有 Windows 机器上失败，可以先走 Windows 原生路线。这个路线不安装 Linux 发行版，直接在 Windows 文件系统中创建 uv 项目，并使用 Windows NVIDIA driver + PyTorch Windows CUDA wheel。
++
++```powershell
++Set-ExecutionPolicy -Scope Process Bypass -Force
++
++# 个人开发版：统一入口
++.\scripts\bootstrap.ps1 -Backend native -Profile personal
++
++# 或者直接调用原生脚本
++.\scripts\bootstrap-windows-native.ps1 -Profile personal
++
++# 企业/受限版
++.\scripts\bootstrap.ps1 -Backend native -Profile enterprise
++# 或者：.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
++
++# 可选：加 MLsys profiling/benchmark 工具
++.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features core,ai,conda,mlsys
++
++# 可选：强制 CPU-only PyTorch
++.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -PytorchBackend cpu
++```
++
++更多说明见 [`docs/WINDOWS_NATIVE_NO_WSL.md`](docs/WINDOWS_NATIVE_NO_WSL.md) 和 [`docs/WSL_UPDATE_TRIAGE.md`](docs/WSL_UPDATE_TRIAGE.md)。
++
++如果想先收集 WSL 失败诊断信息：
++
++```powershell
++.\scripts\triage-wsl-update.ps1
++# 如被允许，可再执行系统修复版本
++.\scripts\triage-wsl-update.ps1 -RepairSystemImage
++```
++
++也可以从统一入口直接切换到 native 模式：
++
++```powershell
++.\scripts\bootstrap.ps1 -Backend native -Profile personal
++```
++
++
+ ### macOS
+ 
+ ```bash
+@@ -142,6 +184,9 @@ uv pip install -r requirements/base.txt
+ | `containers` | ❌ | 安装/配置容器桌面工具；仓库内有 Dockerfile/compose/devcontainer 模板 |
+ | `cuda-toolkit` | ❌ | 在 WSL2 Ubuntu 内安装 CUDA Toolkit toolchain，用于 `nvcc`/native CUDA 编译；不是 PyTorch 必需项 |
+ | `cuda-extras` | ❌ | Linux/WSL NVIDIA CUDA 实验性额外包，如 bitsandbytes/xformers；失败会跳过 |
++| `windows-cuda-extras` | ❌ | Windows 原生 NVIDIA/CUDA 辅助包，如 nvidia-ml-py、onnxruntime-gpu；不是默认项 |
++| `native-build` | ❌ | Windows 原生 CUDA/C++ 扩展编译时安装 Visual Studio Build Tools |
++| `cuda-toolkit-windows` | ❌ | Windows 原生 CUDA Toolkit；仅在需要 `nvcc`/CUDA 扩展编译时启用 |
+ | `all` | ❌ | 启用全部可选项 |
+ 
+ ---
+@@ -221,7 +266,12 @@ uv pip install -r requirements.txt
+ ```text
+ .
+ ├── scripts/
+-│   ├── bootstrap.ps1               # Windows entrypoint
++│   ├── bootstrap.ps1               # Windows entrypoint: WSL backend or native backend
++│   ├── bootstrap-windows-native.ps1 # Windows native no-WSL backend
++│   ├── install-miniforge-windows.ps1 # Windows Miniforge installer
++│   ├── preflight-windows-native.ps1 # Windows native GPU/toolchain check
++│   ├── preflight-windows-native-gpu.ps1 # Windows native NVIDIA/CUDA focused check
++│   ├── triage-wsl-update.ps1       # WSL update/install failure diagnostics
+ │   ├── bootstrap-wsl.sh            # Windows WSL Ubuntu bootstrap
+ │   ├── bootstrap-macos.sh          # macOS entrypoint
+ │   ├── install-miniforge.sh        # Unix/WSL Miniforge installer
+@@ -231,7 +281,8 @@ uv pip install -r requirements.txt
+ │   ├── verify.sh
+ │   └── verify.ps1
+ ├── envs/
+-│   ├── ai-native.yml               # minimal conda-native bridge env
++│   ├── ai-native.yml               # minimal conda-native bridge env for WSL/Linux/macOS
++│   ├── ai-native-windows.yml       # native Windows conda fallback env
+ │   └── geo-native.yml              # example native-heavy env
+ ├── profiles/
+ │   ├── personal.env
+@@ -251,6 +302,8 @@ uv pip install -r requirements.txt
+ │   └── devcontainer.json
+ └── docs/
+     ├── WINDOWS_WSL_NVIDIA.md       # Windows NVIDIA driver + WSL2 CUDA bridge
++    ├── WINDOWS_NATIVE_NO_WSL.md    # native Windows no-WSL fallback
++    ├── WSL_UPDATE_TRIAGE.md        # WSL update failure triage
+     ├── ARCHITECTURE.md
+     ├── MLSYS_TOOLS.md
+     └── SECURITY_PROFILES.md
+@@ -260,7 +313,7 @@ uv pip install -r requirements.txt
+ 
+ ## 注意事项
+ 
+-- Windows 项目文件建议放在 WSL Linux 文件系统，例如 `~/projects/...`，不要把训练项目长期放在 `/mnt/c/...`。
++- WSL 后端的项目文件建议放在 WSL Linux 文件系统，例如 `~/projects/...`；native Windows 后端则放在 `%USERPROFILE%\Projects\...`。
+ - 不要让 conda 和 uv 同时管理同一批核心大包。尤其是 `numpy/scipy/torch` 这类，要么都在 conda-forge，要么都在 uv/PyPI wheel。
+ - `cuda-extras` 是实验项，因为 `flash-attn`、`xformers`、`bitsandbytes` 与 CUDA/PyTorch ABI 组合强相关。默认不会安装这些包。
+ - 企业场景请把 `requirements/*.txt`、`envs/*.yml` 接入私有镜像源/制品库，并开启 SBOM、license scan、secret scan。
+diff --git a/docs/WINDOWS_NATIVE_NO_WSL.md b/docs/WINDOWS_NATIVE_NO_WSL.md
+new file mode 100644
+index 0000000..dc31fe7
+--- /dev/null
++++ b/docs/WINDOWS_NATIVE_NO_WSL.md
+@@ -0,0 +1,139 @@
++# Windows native AI/ML bootstrap without WSL
++
++This document is for Windows 11 workstations where WSL2 is unavailable, broken, blocked by policy, or unnecessary.
++
++The native Windows path is a first-class fallback, not a full replacement for the WSL2/Linux path. It is good for PyTorch, Hugging Face, scikit-learn, notebooks, inference demos, RAG prototypes, and many internal enterprise workstations. It is less ideal for Linux-first CUDA extensions, distributed training stacks, and packages that assume a POSIX toolchain.
++
++## When to use this path
++
++Use `scripts/bootstrap-windows-native.ps1` when:
++
++- `wsl --update` or `wsl --install` fails and the root cause is Windows/MSIX/MSI/Store/enterprise-policy related.
++- Your company disables Hyper-V, VirtualMachinePlatform, Microsoft Store, or WSL distribution installation.
++- You already have a working Windows NVIDIA driver and want PyTorch CUDA wheels directly on Windows.
++- You need a conservative enterprise setup that avoids WSL image management.
++
++Prefer the WSL2 path when:
++
++- You develop Linux-first ML systems code.
++- You need Linux CUDA extension compatibility, Linux containers, or deployment parity with Linux servers.
++- You use packages that are only tested on Linux.
++
++## Quick start
++
++Run from an elevated PowerShell when possible:
++
++```powershell
++Set-ExecutionPolicy -Scope Process Bypass -Force
++
++# Personal profile, default features: core, ai, conda
++.\scripts\bootstrap-windows-native.ps1 -Profile personal
++
++# Enterprise/local-first profile
++.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
++
++# Add MLsys profiling tools
++.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features core,ai,conda,mlsys
++
++# Force CPU-only PyTorch
++.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -PytorchBackend cpu
++
++# Let uv select the appropriate PyTorch backend from installed GPU/driver state
++.\scripts\bootstrap-windows-native.ps1 -Profile personal -PytorchBackend auto
++```
++
++The default project path is:
++
++```text
++%USERPROFILE%\Projects\ai-ml-starter
++```
++
++After installation:
++
++```powershell
++cd $env:USERPROFILE\Projects\ai-ml-starter
++uv run python scripts\check_env.py
++uv run jupyter lab
++```
++
++## What gets installed
++
++Default `core,ai,conda` installs:
++
++- Windows Terminal, PowerShell, Git, GitHub CLI, 7-Zip, VSCodium via winget.
++- `uv` using Astral's official PowerShell installer.
++- CPython using `uv python install`.
++- A project-local `.venv` with scientific Python, PyTorch, Hugging Face, Jupyter, and dev tools.
++- Optional Miniforge/mamba as the conda-forge native dependency fallback.
++
++## NVIDIA / CUDA on native Windows
++
++For PyTorch wheel usage, you usually need only:
++
++- Windows NVIDIA display driver.
++- A PyTorch CUDA wheel selected by the PyTorch install index or by `uv pip install --torch-backend=auto`.
++
++You do **not** need the full CUDA Toolkit just to run normal PyTorch CUDA wheels. Install CUDA Toolkit and Visual Studio Build Tools only when you compile native CUDA code, custom PyTorch extensions, or build libraries from source.
++
++Preflight:
++
++```powershell
++.\scripts\preflight-windows-native.ps1
++```
++
++Useful checks:
++
++```powershell
++nvidia-smi
++nvcc --version       # only expected if CUDA Toolkit is installed
++where cl             # only expected if MSVC shell/path is configured
++```
++
++Install Visual Studio Build Tools only when needed:
++
++```powershell
++.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features core,ai,native-build
++```
++
++
++## Restricted / offline-friendly enterprise mode
++
++In `enterprise` profile, the native script avoids the uv internet installer fallback. Install `uv` through an approved source first, or let `winget` install `astral-sh.uv` if your organization allows it.
++
++For Miniforge in environments where direct GitHub downloads are blocked, download and approve `Miniforge3-Windows-x86_64.exe` internally, then run:
++
++```powershell
++.\scripts\bootstrap-windows-native.ps1 `
++  -Profile enterprise `
++  -NoRemoteScripts `
++  -MiniforgeInstallerPath C:\Path\To\Miniforge3-Windows-x86_64.exe
++```
++
++## Enterprise profile behavior
++
++The enterprise profile is conservative. It sets user environment defaults such as:
++
++```text
++AI_DEV_PROFILE=enterprise
++HF_HUB_DISABLE_TELEMETRY=1
++DO_NOT_TRACK=1
++WANDB_MODE=offline
++MLFLOW_TRACKING_URI=file:///%USERPROFILE%/mlruns
++```
++
++It does not log in to external services, does not write tokens, and does not require container engines.
++
++## Known limitations compared with WSL2/Linux
++
++- Some CUDA extension packages are Linux-first and may not provide Windows wheels.
++- Build failures are more likely when packages require `nvcc`, MSVC, CMake, Ninja, or custom C++/CUDA compilation.
++- Linux deployment parity is weaker than WSL2 or containers.
++- `bitsandbytes`, `xformers`, `flash-attn`, Triton-based kernels, and similar packages require case-by-case compatibility checks on Windows.
++
++## Recommended fallback ladder
++
++1. Native Windows uv project: fastest path when WSL is blocked.
++2. Native Windows + Miniforge/mamba: use for conda-forge binary dependencies.
++3. Native Windows + optional containers: use when Podman/Rancher Desktop is allowed.
++4. WSL2 Ubuntu: return to this when Windows WSL/MSIX issues are repaired.
++5. Remote Linux dev box or GPU server: use when you need Linux-first MLsys/CUDA parity.
+diff --git a/docs/WSL_UPDATE_TRIAGE.md b/docs/WSL_UPDATE_TRIAGE.md
+new file mode 100644
+index 0000000..77fecf1
+--- /dev/null
++++ b/docs/WSL_UPDATE_TRIAGE.md
+@@ -0,0 +1,107 @@
++# WSL update/install failure triage
++
++This note covers failures like:
++
++```text
++wsl --update
++Installing: Windows Subsystem for Linux 2.x.x
++Catastrophic failure
++```
++
++or error code `0x8000FFFF`.
++
++## Why this happens
++
++`wsl --update` is not just a Linux operation. It updates the Windows WSL package / MSI / MSIX layer and depends on Windows components such as optional features, App Installer / Store policy, Windows Update plumbing, virtualization, services, and sometimes corporate endpoint security.
++
++Common root causes:
++
++- PowerShell is not elevated, or the elevated account is different from the user account that will own the WSL distro.
++- `Microsoft-Windows-Subsystem-Linux` or `VirtualMachinePlatform` is disabled or half-enabled pending reboot.
++- BIOS/UEFI virtualization is disabled, or Hyper-V/VirtualMachinePlatform is blocked by policy.
++- Microsoft Store / App Installer / MSIX installation is blocked or broken.
++- Windows Update / BITS / AppX deployment services are disabled or restricted by enterprise policy.
++- Existing WSL Store package state is corrupt.
++- Windows component store or system files are corrupted.
++- Security software blocks the WSL MSI/MSIX install or service registration.
++
++## Minimal diagnostics
++
++Run from elevated PowerShell:
++
++```powershell
++.\scripts\triage-wsl-update.ps1
++```
++
++Optional safe shutdown first:
++
++```powershell
++.\scripts\triage-wsl-update.ps1 -TryShutdown
++```
++
++System repair path, only when you are allowed to repair the OS image:
++
++```powershell
++.\scripts\triage-wsl-update.ps1 -RepairSystemImage
++```
++
++Manual commands worth checking:
++
++```powershell
++cmd.exe /c ver
++wsl --version
++wsl --status
++wsl -l -v
++Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux,VirtualMachinePlatform
++Get-Service LxssManager,vmcompute,hns,SharedAccess,AppXSvc,InstallService,wuauserv,BITS
++```
++
++## Conservative repair sequence
++
++```powershell
++wsl --shutdown
++wsl --update
++```
++
++If that still fails:
++
++```powershell
++sfc /scannow
++DISM /Online /Cleanup-Image /RestoreHealth
++```
++
++If optional features are disabled:
++
++```powershell
++dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
++dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
++```
++
++Then reboot.
++
++## Offline WSL package path
++
++For restricted Store environments, use the WSL release package from the official Microsoft WSL GitHub releases. Microsoft documents an offline path using the WSL MSI package and enabling `VirtualMachinePlatform` with DISM.
++
++This still may be blocked by enterprise policy. If so, do not keep fighting WSL during onboarding; use the Windows-native bootstrap path:
++
++```powershell
++.\scripts\bootstrap.ps1 -Backend native -Profile enterprise
++```
++
++or directly:
++
++```powershell
++.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
++```
++
++## When to stop debugging WSL
++
++Stop and switch to native Windows when:
++
++- You do not control enterprise AppX/MSIX/Store policy.
++- You cannot enable virtualization features or reboot freely.
++- `sfc`/`DISM` are disallowed by IT policy.
++- Your immediate goal is PyTorch/Hugging Face/scikit-learn/Jupyter development rather than Linux-first MLsys work.
++
++Return to WSL later when IT can deploy or repair the WSL package cleanly.
+diff --git a/envs/ai-native-windows.yml b/envs/ai-native-windows.yml
+new file mode 100644
+index 0000000..f9b33f1
+--- /dev/null
++++ b/envs/ai-native-windows.yml
+@@ -0,0 +1,15 @@
++name: ai-native-win
++channels:
++  - conda-forge
++  - nodefaults
++dependencies:
++  - python=3.12
++  - uv
++  - git
++  - git-lfs
++  - cmake
++  - ninja
++  - ffmpeg
++  - graphviz
++  - ipykernel
++  - pip
+diff --git a/scripts/bootstrap-windows-native.ps1 b/scripts/bootstrap-windows-native.ps1
+new file mode 100644
+index 0000000..9c75362
+--- /dev/null
++++ b/scripts/bootstrap-windows-native.ps1
+@@ -0,0 +1,289 @@
++#requires -Version 5.1
++<#
++.SYNOPSIS
++  Native Windows 11 AI/ML bootstrap without WSL.
++
++.DESCRIPTION
++  This entrypoint is for workstations where WSL cannot be installed or updated.
++  It installs Windows developer tools, uv, an AI starter venv, optional Miniforge/mamba,
++  optional MLsys tools, and optional native CUDA build prerequisites.
++
++.EXAMPLE
++  .\scripts\bootstrap-windows-native.ps1 -Profile personal
++  .\scripts\bootstrap-windows-native.ps1 -Profile enterprise -Features core,ai,conda,mlsys
++  .\scripts\bootstrap-windows-native.ps1 -Profile personal -Features core,ai,conda,native-build,cuda-toolkit-windows
++#>
++param(
++    [ValidateSet('personal','enterprise')]
++    [string]$Profile = 'personal',
++
++    [string[]]$Features = @('core','ai','conda'),
++
++    [string]$PythonVersion = '3.12',
++
++    [ValidateSet('auto','cpu','cu118','cu126','cu128','cu130','xpu')]
++    [string]$PytorchBackend = 'auto',
++
++    [string]$ProjectDir = (Join-Path $HOME 'Projects\ai-ml-starter'),
++
++    [string]$MiniforgeDir = (Join-Path $env:USERPROFILE 'miniforge3'),
++
++    [string]$MiniforgeInstallerPath = '',
++
++    [switch]$NoRemoteScripts,
++
++    [switch]$SkipNvidiaPreflight,
++
++    [switch]$DryRun
++)
++
++$ErrorActionPreference = 'Stop'
++$RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
++
++function Has-Feature([string]$Name) {
++    return ($Features -contains $Name) -or ($Features -contains 'all')
++}
++
++function Test-Command([string]$Name) {
++    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
++}
++
++function Invoke-Step([string]$Name, [scriptblock]$Script) {
++    Write-Host "`n==> $Name" -ForegroundColor Cyan
++    if ($DryRun) { return }
++    & $Script
++}
++
++function Install-WingetPackage([string]$Id, [string[]]$ExtraArgs = @()) {
++    if (-not (Test-Command winget)) {
++        Write-Warning 'winget not found. Install App Installer from Microsoft Store, or install packages manually.'
++        return
++    }
++
++    $installed = winget list -e --id $Id 2>$null | Select-String -SimpleMatch $Id
++    if ($installed) {
++        Write-Host "winget package already installed: $Id"
++        return
++    }
++
++    Write-Host "Installing $Id"
++    $wingetArgs = @('install','-e','--id',$Id,'--accept-source-agreements','--accept-package-agreements','--silent','--disable-interactivity') + $ExtraArgs
++    & winget @wingetArgs
++}
++
++
++function Set-UserEnvValue([string]$Name, [string]$Value) {
++    [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
++    Set-Item -Path "env:$Name" -Value $Value
++}
++
++function Apply-ProfileEnvironment() {
++    $modelsDir = Join-Path $env:USERPROFILE 'Models\huggingface'
++    $mlrunsDir = Join-Path $env:USERPROFILE 'mlruns'
++    New-Item -ItemType Directory -Force -Path $modelsDir, $mlrunsDir, (Join-Path $env:USERPROFILE 'Data'), (Join-Path $env:USERPROFILE 'Models') | Out-Null
++
++    $mlrunsUri = 'file:///' + ($mlrunsDir -replace '\\','/')
++    Set-UserEnvValue 'AI_DEV_PROFILE' $Profile
++    Set-UserEnvValue 'HF_HOME' $modelsDir
++    Set-UserEnvValue 'MLFLOW_TRACKING_URI' $mlrunsUri
++    Set-UserEnvValue 'TOKENIZERS_PARALLELISM' 'false'
++    Set-UserEnvValue 'UV_LINK_MODE' 'copy'
++
++    if ($Profile -eq 'enterprise') {
++        Set-UserEnvValue 'HF_HUB_DISABLE_TELEMETRY' '1'
++        Set-UserEnvValue 'DO_NOT_TRACK' '1'
++        Set-UserEnvValue 'WANDB_MODE' 'offline'
++    }
++
++    $profileDir = Join-Path $env:USERPROFILE '.config\ai-ml-dev-bootstrap'
++    New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
++    $profilePs1 = Join-Path $profileDir 'profile.ps1'
++    $lines = @(
++        "`$env:AI_DEV_PROFILE = '$Profile'",
++        "`$env:HF_HOME = '$modelsDir'",
++        "`$env:MLFLOW_TRACKING_URI = '$mlrunsUri'",
++        "`$env:TOKENIZERS_PARALLELISM = 'false'",
++        "`$env:UV_LINK_MODE = 'copy'"
++    )
++    if ($Profile -eq 'enterprise') {
++        $lines += @(
++            "`$env:HF_HUB_DISABLE_TELEMETRY = '1'",
++            "`$env:DO_NOT_TRACK = '1'",
++            "`$env:WANDB_MODE = 'offline'"
++        )
++    }
++    Set-Content -Path $profilePs1 -Value $lines -Encoding UTF8
++}
++
++function Install-Uv() {
++    if (Test-Command uv) {
++        Write-Host "uv already available: $((Get-Command uv).Source)"
++        return
++    }
++    try {
++        Install-WingetPackage 'astral-sh.uv'
++    } catch {
++        Write-Warning ("winget uv install failed: {0}" -f $_.Exception.Message)
++    }
++    if (-not (Test-Command uv)) {
++        if ($Profile -eq 'enterprise' -or $NoRemoteScripts) {
++            throw 'uv is not installed. In enterprise/no-remote-scripts mode, install uv through an approved package source, then re-run.'
++        }
++        Write-Host 'Installing uv with the official standalone installer.'
++        powershell -ExecutionPolicy ByPass -NoProfile -Command "irm https://astral.sh/uv/install.ps1 | iex"
++        $uvBin = Join-Path $HOME '.local\bin'
++        if (Test-Path $uvBin) { $env:Path = "$uvBin;$env:Path" }
++    }
++    if (-not (Test-Command uv)) { throw 'uv installation failed or uv is not on PATH.' }
++}
++
++
++function Copy-StarterProject() {
++    $template = Join-Path $RepoRoot 'templates\ai-starter'
++    if (-not (Test-Path $template)) { throw "Template project not found: $template" }
++
++    if (-not (Test-Path $ProjectDir)) {
++        New-Item -ItemType Directory -Force -Path $ProjectDir | Out-Null
++        Copy-Item -Path (Join-Path $template '*') -Destination $ProjectDir -Recurse -Force
++    } else {
++        Write-Host "Project directory already exists: $ProjectDir"
++        $marker = Join-Path $ProjectDir 'pyproject.toml'
++        if (-not (Test-Path $marker)) {
++            Copy-Item -Path (Join-Path $template '*') -Destination $ProjectDir -Recurse -Force
++        }
++    }
++
++    $profileFile = Join-Path $RepoRoot "profiles\$Profile.env"
++    if (Test-Path $profileFile) {
++        Copy-Item $profileFile (Join-Path $ProjectDir '.env.profile') -Force
++    }
++}
++
++function Invoke-UvPip([string[]]$ArgList) {
++    $pythonExe = Join-Path $ProjectDir '.venv\Scripts\python.exe'
++    if (-not (Test-Path $pythonExe)) { throw "Python executable not found: $pythonExe" }
++    & uv pip install --python $pythonExe @ArgList
++}
++
++function Install-RequirementsFile([string]$RelativePath) {
++    $req = Join-Path $ProjectDir $RelativePath
++    if (Test-Path $req) {
++        Invoke-UvPip -ArgList @('-r', $req)
++    } else {
++        Write-Warning "Requirements file not found: $req"
++    }
++}
++
++function Install-NativeCondaEnv() {
++    $installer = Join-Path $RepoRoot 'scripts\install-miniforge-windows.ps1'
++    & $installer -InstallDir $MiniforgeDir -InstallerPath $MiniforgeInstallerPath -NoRemoteScripts:$NoRemoteScripts
++
++    $mamba = Get-Command mamba -ErrorAction SilentlyContinue
++    if (-not $mamba) { throw 'mamba not found after Miniforge installation.' }
++
++    $envFile = Join-Path $RepoRoot 'envs\ai-native-windows.yml'
++    if (-not (Test-Path $envFile)) { throw "Conda env file not found: $envFile" }
++
++    $existing = (& mamba env list) -join "`n"
++    if ($existing -match 'ai-native-win') {
++        & mamba env update -n ai-native-win -f $envFile
++    } else {
++        & mamba env create -f $envFile
++    }
++}
++
++if (Has-Feature 'core') {
++    Invoke-Step 'Install Windows desktop developer tools' {
++        $packages = @(
++            'Microsoft.PowerShell',
++            'Microsoft.WindowsTerminal',
++            'Git.Git',
++            'GitHub.cli',
++            '7zip.7zip',
++            'VSCodium.VSCodium',
++            'Kitware.CMake'
++        )
++        foreach ($p in $packages) {
++            try { Install-WingetPackage $p } catch { Write-Warning ("Skipped {0}: {1}" -f $p, $_.Exception.Message) }
++        }
++        try { Install-WingetPackage 'Ninja-build.Ninja' } catch { Write-Warning ("Skipped {0}: {1}" -f 'Ninja-build.Ninja', $_.Exception.Message) }
++        Install-Uv
++        Apply-ProfileEnvironment
++    }
++}
++
++if (-not $SkipNvidiaPreflight) {
++    Invoke-Step 'Preflight native Windows NVIDIA/CUDA state' {
++        $preflight = Join-Path $RepoRoot 'scripts\preflight-windows-native.ps1'
++        if (Test-Path $preflight) { & $preflight }
++    }
++}
++
++if (Has-Feature 'native-build') {
++    Invoke-Step 'Install optional native build toolchain' {
++        # Visual Studio Build Tools / MSVC are proprietary, but they are the supported Windows toolchain
++        # for many CUDA and PyTorch extension builds. Keep this feature opt-in.
++        try { Install-WingetPackage 'Microsoft.VisualStudio.2022.BuildTools' } catch { Write-Warning ("Skipped {0}: {1}" -f 'Microsoft.VisualStudio.2022.BuildTools', $_.Exception.Message) }
++    }
++}
++
++if (Has-Feature 'cuda-toolkit-windows') {
++    Invoke-Step 'Install optional NVIDIA CUDA Toolkit for Windows' {
++        # Only needed for nvcc, CUDA samples, or native CUDA extension compilation.
++        try { Install-WingetPackage 'Nvidia.CUDA' } catch { Write-Warning ("Skipped {0}: {1}" -f 'Nvidia.CUDA', $_.Exception.Message) }
++    }
++}
++
++if (Has-Feature 'containers') {
++    Invoke-Step 'Install optional container desktop tools' {
++        foreach ($p in @('RedHat.Podman-Desktop','SUSE.RancherDesktop')) {
++            try { Install-WingetPackage $p } catch { Write-Warning ("Skipped {0}: {1}" -f $p, $_.Exception.Message) }
++        }
++    }
++}
++
++if (Has-Feature 'conda') {
++    Invoke-Step 'Install Miniforge/mamba and native conda fallback env' {
++        Install-NativeCondaEnv
++    }
++}
++
++if (Has-Feature 'ai') {
++    Invoke-Step 'Create native Windows uv AI starter environment' {
++        Apply-ProfileEnvironment
++        Copy-StarterProject
++        Push-Location $ProjectDir
++        try {
++            & uv python install $PythonVersion
++            & uv venv --python $PythonVersion .venv
++
++            # Use uv's PyTorch backend detection by default. It queries installed GPU drivers and
++            # chooses the most compatible PyTorch index, falling back to CPU when needed.
++            if ($PytorchBackend -eq 'cpu') {
++                Invoke-UvPip -ArgList @('torch','torchvision','torchaudio','--index-url','https://download.pytorch.org/whl/cpu')
++            } else {
++                Invoke-UvPip -ArgList @('torch','torchvision','torchaudio',"--torch-backend=$PytorchBackend")
++            }
++
++            Install-RequirementsFile 'requirements\base.txt'
++            Install-RequirementsFile 'requirements\dev.txt'
++            Install-RequirementsFile 'requirements\llm.txt'
++            Install-RequirementsFile "requirements\$Profile.txt"
++            if (Has-Feature 'mlsys') { Install-RequirementsFile 'requirements\mlsys.txt' }
++            if (Has-Feature 'windows-cuda-extras') { Install-RequirementsFile 'requirements\windows-cuda-extras.txt' }
++
++            $pythonExe = Join-Path $ProjectDir '.venv\Scripts\python.exe'
++            & $pythonExe (Join-Path $ProjectDir 'scripts\check_env.py')
++        } finally {
++            Pop-Location
++        }
++    }
++}
++
++Write-Host "`nDone." -ForegroundColor Green
++Write-Host "Project: $ProjectDir"
++Write-Host 'Start:'
++Write-Host "  cd `"$ProjectDir`""
++Write-Host '  .\.venv\Scripts\Activate.ps1'
++Write-Host '  python scripts\check_env.py'
++Write-Host '  jupyter lab'
+diff --git a/scripts/bootstrap.ps1 b/scripts/bootstrap.ps1
+index 723c549..a3b8dcd 100644
+--- a/scripts/bootstrap.ps1
++++ b/scripts/bootstrap.ps1
+@@ -1,13 +1,17 @@
+ #requires -Version 5.1
+ <#
+ .SYNOPSIS
+-  Windows entrypoint. Installs desktop tools and bootstraps WSL2 Ubuntu for AI/ML development.
++  Windows entrypoint. Defaults to WSL2 Ubuntu, or routes to native Windows AI/ML bootstrap with -Backend native.
+ 
+ .EXAMPLE
+   .\scripts\bootstrap.ps1 -Profile personal
+-  .\scripts\bootstrap.ps1 -Profile enterprise -Features core,ai,conda,mlsys
++  .\scripts\bootstrap.ps1 -Backend native -Profile enterprise -Features core,ai,conda,mlsys
+ #>
+ param(
++    [Alias('Mode')]
++    [ValidateSet('wsl','native')]
++    [string]$Backend = 'wsl',
++
+     [ValidateSet('personal','enterprise')]
+     [string]$Profile = 'personal',
+ 
+@@ -17,6 +21,15 @@ param(
+ 
+     [string]$PythonVersion = '3.12',
+ 
++    [ValidateSet('auto','cpu','cu118','cu126','cu128','cu130','xpu')]
++    [string]$PytorchBackend = 'auto',
++
++    [string]$ProjectDir = (Join-Path $HOME 'Projects\ai-ml-starter'),
++
++    [string]$MiniforgeInstallerPath = '',
++
++    [switch]$NoRemoteScripts,
++
+     [string]$PytorchCudaIndex = 'https://download.pytorch.org/whl/cu130',
+ 
+     # Only needed when you explicitly want nvcc / CUDA headers inside WSL.
+@@ -48,6 +61,24 @@ function Test-Command([string]$Name) {
+     return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+ }
+ 
++if ($Backend -eq 'native') {
++    $NativeBootstrap = Join-Path $RepoRoot 'scripts\bootstrap-windows-native.ps1'
++    if (-not (Test-Path $NativeBootstrap)) { throw "Native bootstrap not found: $NativeBootstrap" }
++    $nativeArgs = @{
++        Profile = $Profile
++        Features = $Features
++        PythonVersion = $PythonVersion
++        PytorchBackend = $PytorchBackend
++        ProjectDir = $ProjectDir
++    }
++    if ($MiniforgeInstallerPath) { $nativeArgs.MiniforgeInstallerPath = $MiniforgeInstallerPath }
++    if ($NoRemoteScripts) { $nativeArgs.NoRemoteScripts = $true }
++    if ($SkipNvidiaPreflight) { $nativeArgs.SkipNvidiaPreflight = $true }
++    if ($DryRun) { $nativeArgs.DryRun = $true }
++    & $NativeBootstrap @nativeArgs
++    return
++}
++
+ function Install-WingetPackage([string]$Id) {
+     if (-not (Test-Command winget)) {
+         Write-Warning 'winget not found. Install App Installer from Microsoft Store or use Windows 11 default App Installer.'
+@@ -100,13 +131,28 @@ if (-not $SkipWSL) {
+         if (-not (Test-Command wsl)) {
+             Write-Host 'Installing WSL. A reboot may be required; re-run this script after reboot if requested.'
+             wsl --install -d $Distro
++            if ($LASTEXITCODE -ne 0) {
++                throw ("wsl --install failed with exit code {0}. Use native fallback: .\scripts\bootstrap.ps1 -Backend native -Profile {1}" -f $LASTEXITCODE, $Profile)
++            }
+         } else {
+-            try { wsl --update } catch { Write-Warning "wsl --update failed: $($_.Exception.Message)" }
+-            try { wsl --set-default-version 2 } catch { Write-Warning "wsl default version update failed: $($_.Exception.Message)" }
++            try {
++                wsl --update
++                if ($LASTEXITCODE -ne 0) {
++                    Write-Warning ("wsl --update returned exit code {0}. Continuing without forcing WSL update." -f $LASTEXITCODE)
++                    Write-Warning 'If distro install also fails, use: .\scripts\bootstrap.ps1 -Backend native'
++                }
++            } catch {
++                Write-Warning ("wsl --update failed: {0}" -f $_.Exception.Message)
++                Write-Warning 'Continuing without forcing WSL update. If distro install also fails, use: .\scripts\bootstrap.ps1 -Backend native'
++            }
++            try { wsl --set-default-version 2 } catch { Write-Warning ("wsl default version update failed: {0}" -f $_.Exception.Message) }
+             $distros = (wsl -l -q) -replace "`0", ''
+             if ($distros -notcontains $Distro) {
+                 Write-Host "Installing WSL distro $Distro. A reboot or first-launch user setup may be required."
+                 wsl --install -d $Distro
++                if ($LASTEXITCODE -ne 0) {
++                    throw ("wsl --install -d {0} failed with exit code {1}. Use native fallback: .\scripts\bootstrap.ps1 -Backend native -Profile {2}" -f $Distro, $LASTEXITCODE, $Profile)
++                }
+             }
+         }
+     }
+@@ -119,3 +165,4 @@ if (-not $SkipWSL) {
+ }
+ 
+ Write-Host "`nDone. In WSL: cd ~/projects/ai-ml-starter && uv run jupyter lab" -ForegroundColor Green
++Write-Host "If WSL update/install is blocked on this workstation, run: .\scripts\bootstrap.ps1 -Backend native -Profile $Profile" -ForegroundColor Yellow
+diff --git a/scripts/install-miniforge-windows.ps1 b/scripts/install-miniforge-windows.ps1
+new file mode 100644
+index 0000000..edb23e8
+--- /dev/null
++++ b/scripts/install-miniforge-windows.ps1
+@@ -0,0 +1,56 @@
++#requires -Version 5.1
++<#
++.SYNOPSIS
++  Install Miniforge3 for Windows silently, then make mamba/conda available to the current process.
++#>
++param(
++    [string]$InstallDir = (Join-Path $env:USERPROFILE 'miniforge3'),
++    [string]$InstallerPath = '',
++    [switch]$NoRemoteScripts,
++    [switch]$Force,
++    [switch]$DryRun
++)
++
++$ErrorActionPreference = 'Stop'
++
++function Test-Mamba([string]$Root) {
++    $mamba = Join-Path $Root 'Scripts\mamba.exe'
++    return Test-Path $mamba
++}
++
++if ((Test-Mamba $InstallDir) -and -not $Force) {
++    Write-Host "Miniforge already installed at $InstallDir"
++} else {
++    $installer = $InstallerPath
++    if (-not $installer) {
++        if ($NoRemoteScripts) { throw 'Miniforge is not installed and remote download is disabled. Pass -InstallerPath to a preapproved Miniforge installer.' }
++        $installer = Join-Path $env:TEMP 'Miniforge3-Windows-x86_64.exe'
++        $url = 'https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Windows-x86_64.exe'
++        Write-Host "Downloading Miniforge from $url"
++        if (-not $DryRun) { Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing }
++    }
++    if (-not $DryRun) {
++        if (-not (Test-Path $installer)) { throw "Miniforge installer not found: $installer" }
++        if ($Force -and (Test-Path $InstallDir)) {
++            Write-Warning "Removing existing Miniforge directory: $InstallDir"
++            Remove-Item -Recurse -Force $InstallDir
++        }
++        New-Item -ItemType Directory -Force -Path (Split-Path $InstallDir -Parent) | Out-Null
++        # Miniforge Windows installer uses NSIS. /D must be last and unquoted.
++        $installerArgs = @('/InstallationType=JustMe', '/RegisterPython=0', '/AddToPath=0', '/S', "/D=$InstallDir")
++        $p = Start-Process -FilePath $installer -ArgumentList $installerArgs -Wait -NoNewWindow -PassThru
++        if ($p.ExitCode -ne 0) { throw "Miniforge installer failed with exit code $($p.ExitCode)" }
++    }
++}
++
++$env:PATH = "$InstallDir;$InstallDir\Library\bin;$InstallDir\Scripts;$InstallDir\condabin;$env:PATH"
++
++$mambaExe = Join-Path $InstallDir 'Scripts\mamba.exe'
++$condaExe = Join-Path $InstallDir 'Scripts\conda.exe'
++if (Test-Path $mambaExe) {
++    & $mambaExe --version
++} elseif (Test-Path $condaExe) {
++    & $condaExe --version
++} else {
++    throw "Miniforge install did not produce mamba.exe or conda.exe under $InstallDir"
++}
+diff --git a/scripts/preflight-windows-native-gpu.ps1 b/scripts/preflight-windows-native-gpu.ps1
+new file mode 100644
+index 0000000..9af9aa2
+--- /dev/null
++++ b/scripts/preflight-windows-native-gpu.ps1
+@@ -0,0 +1,66 @@
++#requires -Version 5.1
++<#
++.SYNOPSIS
++  Preflight checks for Windows-native NVIDIA/CUDA AI development without WSL.
++#>
++param(
++    [switch]$Quiet
++)
++
++$ErrorActionPreference = 'Continue'
++
++function Write-Info([string]$Message) {
++    if (-not $Quiet) { Write-Host $Message }
++}
++
++function Test-Command([string]$Name) {
++    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
++}
++
++$info = [ordered]@{
++    windows_version = $null
++    powershell = $PSVersionTable.PSVersion.ToString()
++    nvidia_smi = $null
++    nvidia_gpus = @()
++    cuda_nvcc = $null
++    cuda_path = $env:CUDA_PATH
++    visual_studio_where = $null
++    cl = $null
++}
++
++try {
++    $os = Get-CimInstance Win32_OperatingSystem
++    $info.windows_version = ('{0} {1} build {2}' -f $os.Caption, $os.Version, $os.BuildNumber)
++} catch {}
++
++if (Test-Command nvidia-smi) {
++    $info.nvidia_smi = (Get-Command nvidia-smi).Source
++    try {
++        $gpuLines = & nvidia-smi --query-gpu=name,driver_version --format=csv,noheader 2>$null
++        $info.nvidia_gpus = @($gpuLines)
++    } catch {
++        $info.nvidia_gpus = @('nvidia-smi exists but query failed: ' + $_.Exception.Message)
++    }
++} else {
++    Write-Warning 'nvidia-smi not found on PATH. Install or repair the Windows NVIDIA driver if CUDA GPU use is expected.'
++}
++
++if (Test-Command nvcc) {
++    try { $info.cuda_nvcc = (& nvcc --version | Select-Object -Last 1) } catch {}
++} else {
++    Write-Info 'nvcc not found. This is OK for PyTorch wheel usage; install CUDA Toolkit only for native CUDA compilation.'
++}
++
++$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
++if (Test-Path $vswhere) {
++    $info.visual_studio_where = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null)
++}
++if (Test-Command cl) {
++    try { $info.cl = (& cl 2>&1 | Select-Object -First 1) } catch {}
++}
++
++$info | ConvertTo-Json -Depth 5
++
++if (-not $info.nvidia_smi) {
++    Write-Warning 'No nvidia-smi detected. Continuing; CPU-only PyTorch remains available.'
++}
+diff --git a/scripts/preflight-windows-native.ps1 b/scripts/preflight-windows-native.ps1
+new file mode 100644
+index 0000000..17b3821
+--- /dev/null
++++ b/scripts/preflight-windows-native.ps1
+@@ -0,0 +1,81 @@
++#requires -Version 5.1
++<#
++.SYNOPSIS
++  Native Windows preflight for AI/ML development without WSL.
++#>
++param(
++    [switch]$Json
++)
++
++$ErrorActionPreference = 'Continue'
++
++function Test-Command([string]$Name) {
++    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
++}
++
++function Get-CommandVersion([string]$Name, [string[]]$Args = @('--version')) {
++    if (-not (Test-Command $Name)) { return $null }
++    try {
++        $out = & $Name @Args 2>&1 | Select-Object -First 3
++        return (($out | ForEach-Object { $_.ToString() }) -join "`n")
++    } catch {
++        return "ERROR: $($_.Exception.Message)"
++    }
++}
++
++$result = [ordered]@{}
++
++try {
++    $os = Get-CimInstance Win32_OperatingSystem
++    $cs = Get-CimInstance Win32_ComputerSystem
++    $result.os = [ordered]@{
++        Caption = $os.Caption
++        Version = $os.Version
++        BuildNumber = $os.BuildNumber
++        Architecture = $os.OSArchitecture
++        Manufacturer = $cs.Manufacturer
++        Model = $cs.Model
++        TotalPhysicalMemoryGB = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1)
++    }
++} catch {
++    $result.os = "ERROR: $($_.Exception.Message)"
++}
++
++$commands = 'winget','git','gh','uv','python','py','conda','mamba','nvidia-smi','nvcc','cmake','ninja','cl'
++$result.commands = [ordered]@{}
++foreach ($cmd in $commands) {
++    $entry = [ordered]@{ found = (Test-Command $cmd); path = $null; version = $null }
++    if ($entry.found) {
++        try { $entry.path = (Get-Command $cmd -ErrorAction Stop).Source } catch {}
++        switch ($cmd) {
++            'nvidia-smi' { $entry.version = Get-CommandVersion $cmd @('--query-gpu=name,driver_version','--format=csv') }
++            'cl' { $entry.version = Get-CommandVersion $cmd @() }
++            default { $entry.version = Get-CommandVersion $cmd }
++        }
++    }
++    $result.commands[$cmd] = $entry
++}
++
++$result.cuda = [ordered]@{
++    CUDA_PATH = $env:CUDA_PATH
++    CUDA_PATH_V12_0 = $env:CUDA_PATH_V12_0
++    CUDA_PATH_V13_0 = $env:CUDA_PATH_V13_0
++    toolkit_dirs = @()
++}
++$cudaRoot = 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA'
++if (Test-Path $cudaRoot) {
++    try { $result.cuda.toolkit_dirs = @(Get-ChildItem $cudaRoot -Directory | Select-Object -ExpandProperty FullName) } catch {}
++}
++
++$result.recommendation = @(
++    'For PyTorch/Hugging Face on native Windows, a recent NVIDIA Windows driver plus PyTorch CUDA wheels is usually enough.',
++    'Install CUDA Toolkit and Visual Studio Build Tools only when you need nvcc or native CUDA extension builds.',
++    'TensorFlow GPU on native Windows is legacy-only; use CPU/DirectML or WSL/Linux when available.'
++)
++
++if ($Json) {
++    $result | ConvertTo-Json -Depth 8
++} else {
++    Write-Host '== Windows Native AI/ML preflight ==' -ForegroundColor Cyan
++    $result | ConvertTo-Json -Depth 8
++}
+diff --git a/scripts/triage-wsl-update.ps1 b/scripts/triage-wsl-update.ps1
+new file mode 100644
+index 0000000..662c30d
+--- /dev/null
++++ b/scripts/triage-wsl-update.ps1
+@@ -0,0 +1,120 @@
++#requires -Version 5.1
++<#
++.SYNOPSIS
++  Collects WSL install/update diagnostics for failures such as 0x8000FFFF / Catastrophic failure.
++
++.DESCRIPTION
++  This script is intentionally conservative by default: it prints diagnostics and does not change
++  Windows features or repair the OS unless you pass -RepairSystemImage.
++#>
++param(
++    [switch]$RepairSystemImage,
++    [switch]$TryShutdown,
++    [switch]$Json
++)
++
++$ErrorActionPreference = 'Continue'
++
++function Run-Capture([scriptblock]$Block) {
++    try {
++        $out = & $Block 2>&1
++        return (($out | ForEach-Object { $_.ToString() }) -join "`n")
++    } catch {
++        return "ERROR: $($_.Exception.Message)"
++    }
++}
++
++function Get-FeatureState([string]$Name) {
++    try {
++        $f = Get-WindowsOptionalFeature -Online -FeatureName $Name
++        return $f.State.ToString()
++    } catch {
++        return "ERROR: $($_.Exception.Message)"
++    }
++}
++
++$result = [ordered]@{}
++$result.timestamp = (Get-Date).ToString('o')
++$result.user = [ordered]@{
++    UserName = [Environment]::UserName
++    UserDomainName = [Environment]::UserDomainName
++    IsElevated = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
++}
++
++try {
++    $os = Get-CimInstance Win32_OperatingSystem
++    $cs = Get-CimInstance Win32_ComputerSystem
++    $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
++    $result.system = [ordered]@{
++        Caption = $os.Caption
++        Version = $os.Version
++        BuildNumber = $os.BuildNumber
++        OSArchitecture = $os.OSArchitecture
++        Manufacturer = $cs.Manufacturer
++        Model = $cs.Model
++        HypervisorPresent = $cs.HypervisorPresent
++        VirtualizationFirmwareEnabled = $cpu.VirtualizationFirmwareEnabled
++        SecondLevelAddressTranslationExtensions = $cpu.SecondLevelAddressTranslationExtensions
++        VMMonitorModeExtensions = $cpu.VMMonitorModeExtensions
++    }
++} catch {
++    $result.system = "ERROR: $($_.Exception.Message)"
++}
++
++$result.wsl = [ordered]@{
++    path = (Run-Capture { (Get-Command wsl.exe -ErrorAction Stop).Source })
++    version = (Run-Capture { wsl.exe --version })
++    status = (Run-Capture { wsl.exe --status })
++    distros = (Run-Capture { wsl.exe -l -v })
++}
++
++$result.optional_features = [ordered]@{
++    Microsoft_Windows_Subsystem_Linux = Get-FeatureState 'Microsoft-Windows-Subsystem-Linux'
++    VirtualMachinePlatform = Get-FeatureState 'VirtualMachinePlatform'
++    HypervisorPlatform = Get-FeatureState 'HypervisorPlatform'
++    Microsoft_Hyper_V_All = Get-FeatureState 'Microsoft-Hyper-V-All'
++}
++
++$services = 'LxssManager','vmcompute','hns','SharedAccess','AppXSvc','InstallService','wuauserv','BITS'
++$result.services = [ordered]@{}
++foreach ($svcName in $services) {
++    try {
++        $svc = Get-Service -Name $svcName -ErrorAction Stop
++        $result.services[$svcName] = [ordered]@{ Status = $svc.Status.ToString(); StartType = $svc.StartType.ToString() }
++    } catch {
++        $result.services[$svcName] = "not found or inaccessible: $($_.Exception.Message)"
++    }
++}
++
++$result.appx = [ordered]@{
++    WSL = (Run-Capture { Get-AppxPackage -Name MicrosoftCorporationII.WindowsSubsystemForLinux | Select-Object Name, PackageFullName, Version, InstallLocation | Format-List })
++    AppInstaller = (Run-Capture { Get-AppxPackage -Name Microsoft.DesktopAppInstaller | Select-Object Name, PackageFullName, Version | Format-List })
++}
++
++if ($TryShutdown) {
++    $result.actions = [ordered]@{
++        wsl_shutdown = (Run-Capture { wsl.exe --shutdown })
++    }
++}
++
++if ($RepairSystemImage) {
++    $result.repairs = [ordered]@{
++        sfc = (Run-Capture { sfc.exe /SCANNOW })
++        dism_restorehealth = (Run-Capture { dism.exe /Online /Cleanup-Image /RestoreHealth })
++    }
++}
++
++$result.next_steps = @(
++    'Run this script from an elevated PowerShell and compare IsElevated=true.',
++    'If optional features are Disabled, enable WSL and VirtualMachinePlatform, reboot, then retry.',
++    'If AppX/App Installer/Store is blocked by enterprise policy, use the Windows-native bootstrap instead.',
++    'If system files look corrupted, rerun with -RepairSystemImage.',
++    'If wsl --update keeps failing at the package/MSIX/MSI layer, try the offline MSI from microsoft/WSL releases or ask IT to deploy it.'
++)
++
++if ($Json) {
++    $result | ConvertTo-Json -Depth 10
++} else {
++    Write-Host '== WSL update/install triage ==' -ForegroundColor Cyan
++    $result | ConvertTo-Json -Depth 10
++}
+diff --git a/scripts/verify.ps1 b/scripts/verify.ps1
+index 6fb1ae2..3754f2a 100644
+--- a/scripts/verify.ps1
++++ b/scripts/verify.ps1
+@@ -1,5 +1,18 @@
+ param(
++    [Alias('Mode')]
++    [ValidateSet('wsl','native')]
++    [string]$Backend = 'wsl',
+     [string]$Distro = 'Ubuntu-24.04',
+-    [string]$Project = '~/projects/ai-ml-starter'
++    [string]$WslProject = '~/projects/ai-ml-starter',
++    [string]$NativeProject = (Join-Path $HOME 'Projects\ai-ml-starter')
+ )
+-wsl -d $Distro -- bash -lc "cd $Project && uv run python scripts/check_env.py"
++
++$ErrorActionPreference = 'Stop'
++
++if ($Backend -eq 'native') {
++    $python = Join-Path $NativeProject '.venv\Scripts\python.exe'
++    if (-not (Test-Path $python)) { throw "Native project python not found: $python" }
++    & $python (Join-Path $NativeProject 'scripts\check_env.py')
++} else {
++    wsl -d $Distro -- bash -lc "cd $WslProject && uv run python scripts/check_env.py"
++}
+diff --git a/templates/ai-starter/requirements/windows-cuda-extras.txt b/templates/ai-starter/requirements/windows-cuda-extras.txt
+new file mode 100644
+index 0000000..2c5bed9
+--- /dev/null
++++ b/templates/ai-starter/requirements/windows-cuda-extras.txt
+@@ -0,0 +1,5 @@
++# Windows-native CUDA/NVIDIA optional extras.
++# These are intentionally not installed by default because Windows CUDA extension builds
++# depend on the installed NVIDIA driver, CUDA Toolkit, Visual Studio Build Tools, and PyTorch ABI.
++nvidia-ml-py>=12; sys_platform == "win32"
++onnxruntime-gpu>=1.19; sys_platform == "win32"
