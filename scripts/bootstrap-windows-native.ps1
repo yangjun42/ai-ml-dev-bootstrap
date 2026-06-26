@@ -446,6 +446,28 @@ function Install-RequirementsFile([string]$RelativePath) {
     }
 }
 
+function Test-CondaEnvironmentPrefix {
+    param([Parameter(Mandatory)][string]$Prefix)
+
+    $historyFile = Join-Path $Prefix 'conda-meta\history'
+    return (Test-Path $historyFile)
+}
+
+function Move-IncompleteCondaEnvironmentPrefix {
+    param([Parameter(Mandatory)][string]$Prefix)
+
+    if (-not (Test-Path $Prefix)) { return }
+    if (Test-CondaEnvironmentPrefix -Prefix $Prefix) { return }
+
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $backup = "${Prefix}.incomplete-${timestamp}"
+    Write-Warning "Found an incomplete conda/mamba environment directory: $Prefix"
+    Write-Warning "Moving it aside to: $backup"
+    if (-not $DryRun) {
+        Move-Item -LiteralPath $Prefix -Destination $backup -Force
+    }
+}
+
 function Install-NativeCondaEnv() {
     $installer = Join-Path $RepoRoot 'scripts\install-miniforge-windows.ps1'
     & $installer -InstallDir $script:MiniforgeDir -InstallerPath $MiniforgeInstallerPath -NoRemoteScripts:$NoRemoteScripts -DryRun:$DryRun
@@ -462,14 +484,19 @@ function Install-NativeCondaEnv() {
         throw 'mamba not found after Miniforge installation.'
     }
 
+    $envName = 'ai-native-win'
     $envFile = Join-Path $RepoRoot 'envs\ai-native-windows.yml'
+    $envPrefix = Join-Path $script:MiniforgeDir ("envs\{0}" -f $envName)
     if (-not (Test-Path $envFile)) { throw "Conda env file not found: $envFile" }
 
-    $existing = (& $mamba env list) -join "`n"
-    if ($existing -match 'ai-native-win') {
-        & $mamba env update -n ai-native-win -f $envFile
+    Move-IncompleteCondaEnvironmentPrefix -Prefix $envPrefix
+
+    if (Test-CondaEnvironmentPrefix -Prefix $envPrefix) {
+        Write-Host "Updating existing conda/mamba environment: $envName ($envPrefix)"
+        & $mamba env update -p $envPrefix -f $envFile --prune
     } else {
-        & $mamba env create -f $envFile
+        Write-Host "Creating conda/mamba environment: $envName ($envPrefix)"
+        & $mamba create -p $envPrefix -f $envFile
     }
     if ($LASTEXITCODE -ne 0) { throw "mamba env create/update failed with exit code $LASTEXITCODE" }
 }

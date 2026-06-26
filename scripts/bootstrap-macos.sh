@@ -64,10 +64,17 @@ if has_feature conda; then
     # shellcheck disable=SC1091
     source "$HOME/miniforge3/etc/profile.d/mamba.sh"
   fi
-  if mamba env list | awk '{print $1}' | grep -qx 'ai-native'; then
-    mamba env update -n ai-native -f "$REPO_ROOT/envs/ai-native.yml" --prune
+  AI_NATIVE_PREFIX="$HOME/miniforge3/envs/ai-native"
+  if [ -f "$AI_NATIVE_PREFIX/conda-meta/history" ]; then
+    mamba env update -p "$AI_NATIVE_PREFIX" -f "$REPO_ROOT/envs/ai-native.yml" --prune
   else
-    mamba env create -f "$REPO_ROOT/envs/ai-native.yml"
+    if [ -e "$AI_NATIVE_PREFIX" ]; then
+      BACKUP_PREFIX="${AI_NATIVE_PREFIX}.incomplete-$(date +%Y%m%d-%H%M%S)"
+      echo "[bootstrap] Found incomplete conda/mamba environment directory: $AI_NATIVE_PREFIX" >&2
+      echo "[bootstrap] Moving it aside to: $BACKUP_PREFIX" >&2
+      mv "$AI_NATIVE_PREFIX" "$BACKUP_PREFIX"
+    fi
+    mamba create -p "$AI_NATIVE_PREFIX" -f "$REPO_ROOT/envs/ai-native.yml"
   fi
 fi
 
