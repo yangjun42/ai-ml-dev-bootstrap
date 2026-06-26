@@ -104,7 +104,7 @@ if (Has-Feature 'core') {
             'VSCodium.VSCodium'
         )
         foreach ($p in $packages) {
-            try { Install-WingetPackage $p } catch { Write-Warning "Skipped $p: $($_.Exception.Message)" }
+            try { Install-WingetPackage $p } catch { Write-Warning ("Skipped {0}: {1}" -f $p, $_.Exception.Message) }
         }
     }
 }
@@ -112,7 +112,7 @@ if (Has-Feature 'core') {
 if (Has-Feature 'containers') {
     Invoke-Step 'Install optional container desktop tools' {
         foreach ($p in @('RedHat.Podman-Desktop', 'SUSE.RancherDesktop')) {
-            try { Install-WingetPackage $p } catch { Write-Warning "Skipped $p: $($_.Exception.Message)" }
+            try { Install-WingetPackage $p } catch { Write-Warning ("Skipped {0}: {1}" -f $p, $_.Exception.Message) }
         }
     }
 }
