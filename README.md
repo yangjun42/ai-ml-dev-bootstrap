@@ -1,319 +1,228 @@
 # ai-ml-dev-bootstrap
 
-Windows 11 / WSL2 与 macOS 的 AI/ML 开发环境一键 bootstrap 仓库。
+Windows 11 / WSL2 与 macOS 的 AI/ML 开发环境 bootstrap 模板。
 
-设计目标：
+核心原则：
 
-- **默认用 uv 管 Python 项目依赖**，速度快、项目化、适合 PyTorch / Hugging Face / scikit-learn / Jupyter。
-- **保留 Miniforge + mamba 作为 conda-forge 二进制生态入口**，用于 GDAL、HDF5、R、Qt、复杂 C/C++/Fortran 依赖、团队 `environment.yml` 复现。
-- **Windows 默认走 WSL2 Ubuntu**，避免 Windows 原生 CUDA / 编译链坑。
-- **macOS 原生安装**，Apple Silicon 可选 MLX / MPS 路线。
-- **容器化可选**，不把 Docker/Podman/Rancher 设为必选前提。
-- **两套 profile**：`personal` 更自由，允许外部模型/实验追踪；`enterprise` 默认本地、少遥测、少外部信息传递。
+- **uv-first**：大多数 Python / PyTorch / Hugging Face / scikit-learn 项目由 uv 管理。
+- **Miniforge + mamba 作为 fallback**：用于 conda-forge native 二进制依赖、团队 `environment.yml` 复现、GDAL/HDF5/R/Qt 等复杂依赖。
+- **Windows 优先 WSL2；WSL 被企业策略或系统问题阻断时，使用 native Windows fallback**。
+- **容器、CUDA Toolkit、Visual Studio Build Tools、MLsys profiling 都是可选项，不再默认安装**。
+- **personal / enterprise 两套 profile**：personal 更自由；enterprise 更保守、本地优先、关闭常见遥测默认项。
 
-> 本仓库不替代公司的安全、合规、许可证审查。`enterprise` profile 只是保守默认值模板。
+> 本仓库不替代公司的安全、合规和许可证审查。`enterprise` profile 只是保守默认值模板。
 
 ---
 
-## 一句话结论：Miniforge + mamba 是否重复？
+## Miniforge + mamba 是否重复？
 
-不完全重复。**Miniforge 是发行版/安装器/入口**，它把 conda、mamba、conda-forge 默认 channel 等预配置好；**mamba 是 conda 环境和包的快速 CLI/求解器**。安装 Miniforge 后通常就能直接使用 `conda` 和 `mamba`，日常创建/安装环境时优先用 `mamba`，需要兼容旧文档时再用 `conda`。
-
-本仓库的实践是：
+不完全重复。
 
 ```text
-uv        -> 绝大多数 Python/AI 项目的主包管理器
-Miniforge -> 提供 conda-forge 二进制生态入口
-mamba     -> 用于快速创建/更新 conda 环境
-容器       -> 复现/隔离/部署前验证，可选
+Miniforge = conda-forge 生态的安装入口 / 发行版
+mamba     = 管理 conda 环境和包的快速 CLI / 求解器
+uv        = Python/PyPI/项目环境的主包管理器
 ```
+
+本仓库默认不用 conda 处理常规 Python 项目；只有当你启用 `conda` feature 时才安装 Miniforge/mamba。
 
 ---
 
-## 快速开始
+## Windows 11：native / 无 WSL fallback
 
-### Windows 11：推荐 WSL2 Ubuntu
+当 `wsl --update`、`wsl --install` 或企业策略阻止 WSL 时，用 native Windows 路线。
 
-以管理员 PowerShell 执行首次安装更稳。若 WSL 首装要求重启，重启后重新执行同一命令。
+### 最小企业版，默认会交互询问目录并显示安装进度
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
-
-git clone https://github.com/YOUR_ORG_OR_USER/ai-ml-dev-bootstrap.git
-cd ai-ml-dev-bootstrap
-
-# 个人开发版：默认 core, ai, conda
-.\scripts\bootstrap.ps1 -Backend wsl -Profile personal
-
-# 企业/受限版：默认 core, ai, conda，但更保守的环境变量和工具选择
-.\scripts\bootstrap.ps1 -Backend wsl -Profile enterprise
-
-# 可选：加 MLsys profiling/benchmark 工具
-.\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,mlsys
-
-# 可选：再安装容器桌面工具
-.\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,containers
+.\scripts\bootstrap.ps1 -Backend native -Profile enterprise
 ```
 
-Windows 侧会安装基础桌面工具，并在 WSL2 Ubuntu 内配置真正的 AI/ML 开发环境。
-
-### Windows 11 已经装了 NVIDIA / CUDA 怎么办？
-
-这正是推荐路径：**保留 Windows 侧 NVIDIA 驱动，不要在 WSL2 里安装 Linux NVIDIA display driver**。WSL2 会把 Windows 驱动的 CUDA driver bridge 暴露到 Linux 发行版的 `/usr/lib/wsl/lib/`，包括 `libcuda.so` 和常见的 `/usr/lib/wsl/lib/nvidia-smi`。
-
-默认 bootstrap 会做 NVIDIA/WSL preflight，并在 WSL 内检测到 GPU 时安装 CUDA PyTorch wheel：
+等价直接入口：
 
 ```powershell
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
+```
+
+native Windows 默认 feature 现在是：
+
+```text
+enterprise 默认: minimal,ai
+personal 默认:   minimal,ai,vcs,editor,build,conda
+```
+
+其中 `minimal,ai` 只做 uv、项目 `.venv`、PyTorch/Hugging Face/scientific Python 依赖和本地 profile 环境变量。不会默认装 Git、GitHub CLI、VSCodium、CMake、Ninja、Visual Studio Build Tools 或 CUDA Toolkit。
+
+### 指定非 C 盘安装/缓存根目录
+
+```powershell
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -InstallRoot D:\AI `
+  -UseDefaults `
+  -AssumeYes
+```
+
+这会把默认目录集中到：
+
+```text
+D:\AI\Projects\ai-ml-starter
+D:\AI\miniforge3
+D:\AI\Models\huggingface
+D:\AI\mlruns
+D:\AI\uv-cache
+D:\AI\uv-python
+D:\AI\uv-tools
+```
+
+也可以逐项指定：
+
+```powershell
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -ProjectDir D:\Projects\ai-ml-starter `
+  -ModelsDir D:\Models\huggingface `
+  -UvCacheDir D:\Caches\uv `
+  -UvPythonInstallDir D:\Tools\uv-python `
+  -MiniforgeDir D:\Tools\miniforge3
+```
+
+### WinGet 进度 / 交互 / 日志
+
+默认 `WingetMode` 是 `progress`，不再使用 `--silent --disable-interactivity`，会尽量显示 winget 的安装进度并写 per-package verbose log。
+
+```powershell
+# 默认：显示 winget 进度
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
+
+# 显示安装器 UI，适合人工装机排查
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetMode interactive
+
+# 旧行为：静默安装，适合 CI 或全自动镜像
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetMode silent -UseDefaults -AssumeYes
+```
+
+WinGet 日志：
+
+```text
+%TEMP%\ai-ml-dev-bootstrap\winget-logs
+```
+
+可选地给支持安装位置的 winget 包传 `--location`：
+
+```powershell
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile personal `
+  -Features minimal,ai,vcs,editor,build `
+  -WingetInstallLocation D:\Apps `
+  -WingetMode interactive
+```
+
+注意：`--location` 只有部分 installer 支持。脚本会先带 `--location` 尝试；如果失败，会自动重试一次不带 `--location`。
+
+### 可选 feature 示例
+
+```powershell
+# 仅 uv + AI 项目
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -Features minimal,ai
+
+# 加 Miniforge/mamba fallback
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -Features minimal,ai,conda
+
+# 加 Git/GitHub CLI
+.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features minimal,ai,vcs
+
+# 加编辑器和 CMake/Ninja，但不装 VS Build Tools
+.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features minimal,ai,vcs,editor,build
+
+# 需要编译 C++/CUDA extension 时才启用
+.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features minimal,ai,native-build,cuda-toolkit-windows
+
+# 加 MLsys profiling / benchmark 工具
+.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features minimal,ai,mlsys
+
+# 跳过某些包
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile personal `
+  -Features minimal,ai,vcs,editor,build `
+  -SkipPackages Git.Git,VSCodium.VSCodium
+```
+
+---
+
+## Windows 11：推荐 WSL2 Ubuntu 路线
+
+WSL 正常时，仍推荐 WSL2 Ubuntu 作为主线：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass -Force
 .\scripts\bootstrap.ps1 -Backend wsl -Profile personal
 ```
 
-只有当你需要 `nvcc`、CUDA headers、native CUDA extension 编译或 CUDA samples 时，才启用 WSL 内的 CUDA Toolkit：
+Windows 已安装 NVIDIA driver / CUDA 时，WSL2 会通过 Windows driver bridge 暴露 GPU。普通 PyTorch/Hugging Face 使用通常不需要在 WSL 里安装 Linux CUDA Toolkit；只有需要 `nvcc`、CUDA headers、CUDA samples 或编译 CUDA extension 时才启用：
 
 ```powershell
 .\scripts\bootstrap.ps1 -Backend wsl -Profile personal -Features core,ai,conda,cuda-toolkit -CudaToolkitVersion 13-3
 ```
 
-更多说明见 [`docs/WINDOWS_WSL_NVIDIA.md`](docs/WINDOWS_WSL_NVIDIA.md)。
-
-
-### Windows 11：无 WSL / WSL 更新失败时的原生安装 fallback
-
-如果 `wsl --update` / `wsl --install` 在企业工作站或现有 Windows 机器上失败，可以先走 Windows 原生路线。这个路线不安装 Linux 发行版，直接在 Windows 文件系统中创建 uv 项目，并使用 Windows NVIDIA driver + PyTorch Windows CUDA wheel。
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
-
-# 个人开发版：统一入口
-.\scripts\bootstrap.ps1 -Backend native -Profile personal
-
-# 或者直接调用原生脚本
-.\scripts\bootstrap-windows-native.ps1 -Profile personal
-
-# 企业/受限版
-.\scripts\bootstrap.ps1 -Backend native -Profile enterprise
-# 或者：.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
-
-# 可选：加 MLsys profiling/benchmark 工具
-.\scripts\bootstrap-windows-native.ps1 -Profile personal -Features core,ai,conda,mlsys
-
-# 可选：强制 CPU-only PyTorch
-.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -PytorchBackend cpu
-```
-
-更多说明见 [`docs/WINDOWS_NATIVE_NO_WSL.md`](docs/WINDOWS_NATIVE_NO_WSL.md) 和 [`docs/WSL_UPDATE_TRIAGE.md`](docs/WSL_UPDATE_TRIAGE.md)。
-
-如果想先收集 WSL 失败诊断信息：
+WSL 更新失败时可先收集诊断：
 
 ```powershell
 .\scripts\triage-wsl-update.ps1
-# 如被允许，可再执行系统修复版本
-.\scripts\triage-wsl-update.ps1 -RepairSystemImage
 ```
 
-也可以从统一入口直接切换到 native 模式：
+---
 
-```powershell
-.\scripts\bootstrap.ps1 -Backend native -Profile personal
-```
-
-
-### macOS
+## macOS
 
 ```bash
-git clone https://github.com/YOUR_ORG_OR_USER/ai-ml-dev-bootstrap.git
-cd ai-ml-dev-bootstrap
-
-# 个人开发版
 ./scripts/bootstrap-macos.sh --profile personal
-
-# 企业/受限版
 ./scripts/bootstrap-macos.sh --profile enterprise
-
-# 可选：加 MLsys 工具
 ./scripts/bootstrap-macos.sh --profile personal --features core,ai,conda,mlsys
-
-# 可选：容器工具
-./scripts/bootstrap-macos.sh --profile personal --features core,ai,conda,containers
 ```
 
 Apple Silicon 机器会额外尝试安装 MLX 相关包。
 
 ---
 
-## Bootstrap 之后会得到什么？
+## Feature 表
 
-默认会创建：
-
-```text
-~/projects/ai-ml-starter/
-  pyproject.toml
-  requirements/
-  notebooks/
-  src/
-  scripts/
-```
-
-常用命令：
-
-```bash
-cd ~/projects/ai-ml-starter
-uv run python scripts/check_env.py
-uv run jupyter lab
-```
-
-如果安装了 Miniforge/mamba：
-
-```bash
-mamba env list
-mamba activate ai-native
-uv pip install -r requirements/base.txt
-```
-
----
-
-## Features
-
-`-Features` / `--features` 是逗号分隔列表：
-
-| feature | 默认 | 说明 |
+| feature | native Windows 默认 | 说明 |
 |---|---:|---|
-| `core` | ✅ | Git、shell、uv、基础构建工具、编辑器 |
-| `ai` | ✅ | 创建 uv AI starter 项目，安装 PyTorch、Jupyter、scikit-learn、Hugging Face 常用包 |
-| `conda` | ✅ | 安装 Miniforge，创建 `ai-native` conda 环境，作为 native deps fallback |
-| `mlsys` | ❌ | profiling/benchmark 工具，如 PyTorch Profiler 辅助、TensorBoard、Scalene、py-spy、memray、ONNX Runtime |
-| `containers` | ❌ | 安装/配置容器桌面工具；仓库内有 Dockerfile/compose/devcontainer 模板 |
-| `cuda-toolkit` | ❌ | 在 WSL2 Ubuntu 内安装 CUDA Toolkit toolchain，用于 `nvcc`/native CUDA 编译；不是 PyTorch 必需项 |
-| `cuda-extras` | ❌ | Linux/WSL NVIDIA CUDA 实验性额外包，如 bitsandbytes/xformers；失败会跳过 |
-| `windows-cuda-extras` | ❌ | Windows 原生 NVIDIA/CUDA 辅助包，如 nvidia-ml-py、onnxruntime-gpu；不是默认项 |
-| `native-build` | ❌ | Windows 原生 CUDA/C++ 扩展编译时安装 Visual Studio Build Tools |
-| `cuda-toolkit-windows` | ❌ | Windows 原生 CUDA Toolkit；仅在需要 `nvcc`/CUDA 扩展编译时启用 |
-| `all` | ❌ | 启用全部可选项 |
+| `minimal` | ✅ | uv + profile 环境变量；不安装桌面/构建工具 |
+| `ai` | ✅ | 创建 starter 项目和 `.venv`，安装 PyTorch/HF/scikit-learn/Jupyter |
+| `conda` | personal ✅ / enterprise ❌ | 安装 Miniforge/mamba 和 conda fallback env |
+| `vcs` | personal ✅ / enterprise ❌ | Git、GitHub CLI |
+| `editor` | personal ✅ / enterprise ❌ | VSCodium；如果检测到 `codium` 或 `code` 会跳过 |
+| `desktop` | ❌ | PowerShell、Windows Terminal、7-Zip |
+| `build` | personal ✅ / enterprise ❌ | CMake、Ninja；用于 native build helpers，不是 VS Build Tools |
+| `native-build` | ❌ | Visual Studio Build Tools / MSVC；仅编译 C++/CUDA 扩展时启用 |
+| `cuda-toolkit-windows` | ❌ | NVIDIA CUDA Toolkit for Windows；仅需要 `nvcc` 时启用 |
+| `windows-cuda-extras` | ❌ | Windows CUDA 相关 Python extras |
+| `mlsys` | ❌ | profiling / benchmark 工具 |
+| `containers` | ❌ | Podman Desktop / Rancher Desktop |
+| `core` | 兼容别名 | 展开为 `minimal,desktop,vcs,editor,build`，不再建议作为企业默认 |
 
 ---
 
-## Profiles
-
-### personal
-
-适合个人电脑、开源研究、允许把模型/metrics/artifacts 传到外部服务的场景。
-
-- 可安装 Hugging Face、W&B、MLflow、DVC、Gradio、Streamlit 等。
-- 默认 `MLFLOW_TRACKING_URI=file://$HOME/mlruns`，但不阻止你配置远程 tracking。
-- 保留云服务 CLI 的空间，但不默认写入 token。
-
-### enterprise
-
-适合代码、数据、模型权重、metrics 不应随意外传的场景。
-
-- 默认禁用 Hugging Face Hub 遥测环境变量。
-- 默认 `WANDB_MODE=offline`。
-- 默认 MLflow 使用本地文件 tracking。
-- conda 默认 `conda-forge + nodefaults + strict channel priority`。
-- 不自动登录任何外部服务，不保存 token，不默认安装闭源 SaaS agent。
-
----
-
-## 推荐日常工作流
-
-### uv-only 项目
-
-```bash
-uv init --python 3.12 my-project
-cd my-project
-uv add numpy pandas scikit-learn jupyterlab
-uv add transformers datasets accelerate
-uv add --dev ruff pytest
-```
-
-### conda native + uv Python 层
-
-```bash
-mamba create -n geo -c conda-forge -c nodefaults python=3.12 uv gdal geopandas rasterio hdf5
-mamba activate geo
-uv pip install transformers datasets accelerate
-```
-
-### 接同事的 Anaconda 配置
-
-优先让同事导出：
-
-```bash
-conda env export --from-history > environment.yml
-```
-
-你用 Miniforge/mamba：
-
-```bash
-mamba env create -f environment.yml
-```
-
-如果同事给的是同平台 explicit spec：
-
-```bash
-mamba create -n legacy --file explicit-win-64.txt
-```
-
-如果只是 `requirements.txt`：
-
-```bash
-uv pip install -r requirements.txt
-```
-
----
-
-## 仓库结构
+## 目录结构
 
 ```text
-.
-├── scripts/
-│   ├── bootstrap.ps1               # Windows entrypoint: WSL backend or native backend
-│   ├── bootstrap-windows-native.ps1 # Windows native no-WSL backend
-│   ├── install-miniforge-windows.ps1 # Windows Miniforge installer
-│   ├── preflight-windows-native.ps1 # Windows native GPU/toolchain check
-│   ├── preflight-windows-native-gpu.ps1 # Windows native NVIDIA/CUDA focused check
-│   ├── triage-wsl-update.ps1       # WSL update/install failure diagnostics
-│   ├── bootstrap-wsl.sh            # Windows WSL Ubuntu bootstrap
-│   ├── bootstrap-macos.sh          # macOS entrypoint
-│   ├── install-miniforge.sh        # Unix/WSL Miniforge installer
-│   ├── preflight-windows-nvidia.ps1 # Windows NVIDIA / WSL2 GPU bridge check
-│   ├── install-wsl-cuda-toolkit.sh  # optional WSL2 CUDA Toolkit toolchain
-│   ├── install-cuda-extras.sh      # optional Linux CUDA packages
-│   ├── verify.sh
-│   └── verify.ps1
-├── envs/
-│   ├── ai-native.yml               # minimal conda-native bridge env for WSL/Linux/macOS
-│   ├── ai-native-windows.yml       # native Windows conda fallback env
-│   └── geo-native.yml              # example native-heavy env
-├── profiles/
-│   ├── personal.env
-│   └── enterprise.env
-├── templates/
-│   └── ai-starter/
-│       ├── pyproject.toml
-│       ├── requirements/
-│       ├── scripts/check_env.py
-│       └── notebooks/00_smoke_test.ipynb
-├── containers/
-│   ├── Dockerfile.cpu
-│   ├── Dockerfile.gpu-wheel
-│   ├── compose.cpu.yml
-│   └── compose.gpu.yml
-├── .devcontainer/
-│   └── devcontainer.json
-└── docs/
-    ├── WINDOWS_WSL_NVIDIA.md       # Windows NVIDIA driver + WSL2 CUDA bridge
-    ├── WINDOWS_NATIVE_NO_WSL.md    # native Windows no-WSL fallback
-    ├── WSL_UPDATE_TRIAGE.md        # WSL update failure triage
-    ├── ARCHITECTURE.md
-    ├── MLSYS_TOOLS.md
-    └── SECURITY_PROFILES.md
+scripts/
+  bootstrap.ps1                  # Windows unified entrypoint
+  bootstrap-windows-native.ps1   # native Windows/no-WSL backend
+  bootstrap-wsl.sh               # WSL Ubuntu backend
+  bootstrap-macos.sh             # macOS backend
+  install-miniforge-windows.ps1  # Windows Miniforge installer
+  preflight-windows-native.ps1   # Windows native GPU/toolchain check
+  triage-wsl-update.ps1          # WSL update/install diagnostics
+
+tools/
+  test-powershell-syntax.ps1     # maintainer-only syntax parser, not a user bootstrap entrypoint
+
+docs/
+  WINDOWS_NATIVE_NO_WSL.md
+  WINDOWS_WSL_NVIDIA.md
+  WSL_UPDATE_TRIAGE.md
 ```
-
----
-
-## 注意事项
-
-- WSL 后端的项目文件建议放在 WSL Linux 文件系统，例如 `~/projects/...`；native Windows 后端则放在 `%USERPROFILE%\Projects\...`。
-- 不要让 conda 和 uv 同时管理同一批核心大包。尤其是 `numpy/scipy/torch` 这类，要么都在 conda-forge，要么都在 uv/PyPI wheel。
-- `cuda-extras` 是实验项，因为 `flash-attn`、`xformers`、`bitsandbytes` 与 CUDA/PyTorch ABI 组合强相关。默认不会安装这些包。
-- 企业场景请把 `requirements/*.txt`、`envs/*.yml` 接入私有镜像源/制品库，并开启 SBOM、license scan、secret scan。

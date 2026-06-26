@@ -4,7 +4,7 @@ on:
   pull_request:
 
 jobs:
-  shellcheck-lite:
+  shell-python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,3 +14,12 @@ jobs:
       - name: Python syntax check
         run: |
           python -m py_compile templates/ai-starter/scripts/*.py
+
+  powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell syntax check
+        shell: pwsh
+        run: |
+          .\tools\test-powershell-syntax.ps1

@@ -5,7 +5,8 @@
 This repo uses a layered ownership model:
 
 1. OS/package bootstrap:
-   - Windows: winget + WSL2 Ubuntu.
+   - Windows WSL backend: winget + WSL2 Ubuntu.
+   - Windows native backend: uv-first, small feature groups, optional winget packages.
    - macOS: Homebrew for OS-level developer tools.
 2. Python project dependencies:
    - uv is the default owner for Python virtual environments and PyPI packages.
@@ -25,7 +26,9 @@ uv is excellent for Python projects, but conda-forge remains strong when package
 
 ## Windows design
 
-Windows is used as the desktop host. The AI/ML environment is created inside WSL2 Ubuntu. This avoids most Windows-native CUDA, compiler, and symlink/path issues.
+When WSL2 is available, Windows is used as the desktop host and the AI/ML environment is created inside WSL2 Ubuntu. This avoids most Windows-native CUDA, compiler, and symlink/path issues.
+
+When WSL2 is blocked or broken, the native Windows backend is the fallback. It defaults to `minimal,ai`, checks for existing commands before installing packages, shows WinGet progress by default, and allows project/cache/tool paths to be placed outside the default C:\Users tree.
 
 ## macOS design
 

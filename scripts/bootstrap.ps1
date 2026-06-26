@@ -5,7 +5,8 @@
 
 .EXAMPLE
   .\scripts\bootstrap.ps1 -Profile personal
-  .\scripts\bootstrap.ps1 -Backend native -Profile enterprise -Features core,ai,conda,mlsys
+  .\scripts\bootstrap.ps1 -Backend native -Profile enterprise
+  .\scripts\bootstrap.ps1 -Backend native -Profile enterprise -InstallRoot D:\AI -UseDefaults -AssumeYes
 #>
 param(
     [Alias('Mode')]
@@ -15,19 +16,40 @@ param(
     [ValidateSet('personal','enterprise')]
     [string]$Profile = 'personal',
 
-    [string[]]$Features = @('core','ai','conda'),
+    # Empty means backend/profile-aware defaults.
+    [string[]]$Features = @(),
 
     [string]$Distro = 'Ubuntu-24.04',
-
     [string]$PythonVersion = '3.12',
 
     [ValidateSet('auto','cpu','cu118','cu126','cu128','cu130','xpu')]
     [string]$PytorchBackend = 'auto',
 
-    [string]$ProjectDir = (Join-Path $HOME 'Projects\ai-ml-starter'),
-
+    [string]$ProjectDir = '',
+    [string]$InstallRoot = '',
+    [string]$MiniforgeDir = '',
     [string]$MiniforgeInstallerPath = '',
+    [string]$ModelsDir = '',
+    [string]$MlrunsDir = '',
+    [string]$UvCacheDir = '',
+    [string]$UvPythonInstallDir = '',
+    [string]$UvToolDir = '',
+    [string]$UvToolBinDir = '',
+    [string]$UvInstallDir = '',
+    [string]$WingetInstallLocation = '',
 
+    [ValidateSet('progress','interactive','silent')]
+    [string]$WingetMode = 'progress',
+
+    [string[]]$SkipPackages = @(),
+    [string[]]$OnlyPackages = @(),
+
+    [switch]$VerboseWinget,
+    [switch]$InteractiveWinget,
+    [switch]$SilentWinget,
+    [switch]$UseDefaults,
+    [switch]$NoLocationPrompts,
+    [switch]$AssumeYes,
     [switch]$NoRemoteScripts,
 
     [string]$PytorchCudaIndex = 'https://download.pytorch.org/whl/cu130',
@@ -37,28 +59,25 @@ param(
     [string]$CudaToolkitVersion = '13-3',
 
     [switch]$SkipNvidiaPreflight,
-
     [switch]$SkipWSL,
-
     [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$FeatureCsv = ($Features -join ',')
+
+function Test-Command([string]$Name) {
+    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
 
 function Has-Feature([string]$Name) {
-    return ($Features -contains $Name) -or ($Features -contains 'all')
+    return ($script:EffectiveFeatures -contains $Name) -or ($script:EffectiveFeatures -contains 'all')
 }
 
 function Invoke-Step([string]$Name, [scriptblock]$Script) {
     Write-Host "`n==> $Name" -ForegroundColor Cyan
     if ($DryRun) { return }
     & $Script
-}
-
-function Test-Command([string]$Name) {
-    return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
 if ($Backend -eq 'native') {
@@ -70,14 +89,40 @@ if ($Backend -eq 'native') {
         PythonVersion = $PythonVersion
         PytorchBackend = $PytorchBackend
         ProjectDir = $ProjectDir
+        InstallRoot = $InstallRoot
+        MiniforgeDir = $MiniforgeDir
+        ModelsDir = $ModelsDir
+        MlrunsDir = $MlrunsDir
+        UvCacheDir = $UvCacheDir
+        UvPythonInstallDir = $UvPythonInstallDir
+        UvToolDir = $UvToolDir
+        UvToolBinDir = $UvToolBinDir
+        UvInstallDir = $UvInstallDir
+        WingetInstallLocation = $WingetInstallLocation
+        WingetMode = $WingetMode
+        SkipPackages = $SkipPackages
+        OnlyPackages = $OnlyPackages
     }
     if ($MiniforgeInstallerPath) { $nativeArgs.MiniforgeInstallerPath = $MiniforgeInstallerPath }
     if ($NoRemoteScripts) { $nativeArgs.NoRemoteScripts = $true }
     if ($SkipNvidiaPreflight) { $nativeArgs.SkipNvidiaPreflight = $true }
     if ($DryRun) { $nativeArgs.DryRun = $true }
+    if ($VerboseWinget) { $nativeArgs.VerboseWinget = $true }
+    if ($InteractiveWinget) { $nativeArgs.InteractiveWinget = $true }
+    if ($SilentWinget) { $nativeArgs.SilentWinget = $true }
+    if ($UseDefaults) { $nativeArgs.UseDefaults = $true }
+    if ($NoLocationPrompts) { $nativeArgs.NoLocationPrompts = $true }
+    if ($AssumeYes) { $nativeArgs.AssumeYes = $true }
     & $NativeBootstrap @nativeArgs
     return
 }
+
+if (-not $Features -or $Features.Count -eq 0) {
+    $script:EffectiveFeatures = @('core','ai','conda')
+} else {
+    $script:EffectiveFeatures = $Features
+}
+$FeatureCsv = ($script:EffectiveFeatures -join ',')
 
 function Install-WingetPackage([string]$Id) {
     if (-not (Test-Command winget)) {
@@ -94,7 +139,7 @@ function Install-WingetPackage([string]$Id) {
 }
 
 if (Has-Feature 'core') {
-    Invoke-Step 'Install Windows desktop developer tools' {
+    Invoke-Step 'Install Windows helper tools for WSL bootstrap' {
         $packages = @(
             'Microsoft.PowerShell',
             'Microsoft.WindowsTerminal',
