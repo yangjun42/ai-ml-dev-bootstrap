@@ -44,6 +44,14 @@ param(
     [string[]]$SkipPackages = @(),
     [string[]]$OnlyPackages = @(),
 
+    [ValidateSet('prompt','reuse','backup','clean','fail')]
+    [string]$ExistingInstallDirPolicy = 'prompt',
+
+    [ValidateSet('prompt','merge','new','fail')]
+    [string]$ExistingProjectPolicy = 'prompt',
+
+    [switch]$ForceReinstallTools,
+
     [switch]$VerboseWinget,
     [switch]$InteractiveWinget,
     [switch]$SilentWinget,
@@ -102,6 +110,8 @@ if ($Backend -eq 'native') {
         WingetMode = $WingetMode
         SkipPackages = $SkipPackages
         OnlyPackages = $OnlyPackages
+        ExistingInstallDirPolicy = $ExistingInstallDirPolicy
+        ExistingProjectPolicy = $ExistingProjectPolicy
     }
     if ($MiniforgeInstallerPath) { $nativeArgs.MiniforgeInstallerPath = $MiniforgeInstallerPath }
     if ($NoRemoteScripts) { $nativeArgs.NoRemoteScripts = $true }
@@ -113,6 +123,7 @@ if ($Backend -eq 'native') {
     if ($UseDefaults) { $nativeArgs.UseDefaults = $true }
     if ($NoLocationPrompts) { $nativeArgs.NoLocationPrompts = $true }
     if ($AssumeYes) { $nativeArgs.AssumeYes = $true }
+    if ($ForceReinstallTools) { $nativeArgs.ForceReinstallTools = $true }
     & $NativeBootstrap @nativeArgs
     return
 }

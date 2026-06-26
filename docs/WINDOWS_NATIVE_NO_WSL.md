@@ -104,6 +104,61 @@ To suppress all prompts:
 .\scripts\bootstrap-windows-native.ps1 -Profile enterprise -UseDefaults -AssumeYes
 ```
 
+
+
+## Existing / non-empty target directories
+
+The native bootstrap is designed to be re-runnable. Data/cache directories such as `ModelsDir`, `MlrunsDir`, and `UvCacheDir` may be non-empty and are reused.
+
+Generated tool directories are handled more carefully. If `MiniforgeDir`, the uv standalone install directory, a `.venv`, or the conda environment prefix already exists but does not contain the expected marker files, the script no longer lets the installer fail blindly. It uses `ExistingInstallDirPolicy`:
+
+```powershell
+# Default: ask interactively; in non-interactive mode, move incomplete dirs aside.
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -Features minimal,ai,conda
+
+# Always move incomplete generated/tool dirs aside and continue.
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -ExistingInstallDirPolicy backup
+
+# Delete incomplete generated/tool dirs and reinstall.
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -ExistingInstallDirPolicy clean
+
+# Fail fast instead of modifying anything.
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -ExistingInstallDirPolicy fail
+```
+
+For the starter project directory, the separate `ExistingProjectPolicy` controls what happens when `ProjectDir` is non-empty but has no `pyproject.toml`:
+
+```powershell
+# Default: ask interactively; non-interactive default is merge.
+# merge copies only missing template files and never overwrites existing files.
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -ExistingProjectPolicy merge
+
+# Create a new timestamped project directory instead.
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -ExistingProjectPolicy new
+```
+
+For a fully non-interactive enterprise install that avoids C drive state where possible and safely moves incomplete generated directories aside:
+
+```powershell
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -InstallRoot D:\AI `
+  -UseDefaults `
+  -AssumeYes `
+  -ExistingInstallDirPolicy backup `
+  -ExistingProjectPolicy merge
+```
+
 ## WinGet visibility modes
 
 The default `WingetMode` is `progress`: the script does not pass `--silent --disable-interactivity`, so winget and installers can show normal progress where supported.

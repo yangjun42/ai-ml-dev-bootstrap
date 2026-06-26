@@ -88,6 +88,38 @@ D:\AI\uv-tools
   -MiniforgeDir D:\Tools\miniforge3
 ```
 
+
+### 已存在 / 非空目录处理
+
+native Windows 脚本现在是可重复运行的。模型目录、MLflow 目录、uv cache 这类数据/缓存目录可以非空，会直接复用。
+
+对于 Miniforge、uv standalone、`.venv`、conda env 这类“生成目录”，如果目标目录非空但不完整，脚本不会再让 installer 直接失败；默认在交互式 PowerShell 里询问，非交互模式下自动移动到 `.incomplete-时间戳` 后继续。
+
+```powershell
+# 推荐：非交互时把不完整生成目录移到旁边，不误删数据
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -InstallRoot D:\AI `
+  -UseDefaults `
+  -AssumeYes `
+  -ExistingInstallDirPolicy backup `
+  -ExistingProjectPolicy merge
+
+# 想清理半成品并重装工具目录
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -Features minimal,ai,conda `
+  -ExistingInstallDirPolicy clean
+
+# 项目目录非空但不是 starter project 时，新建时间戳目录
+.\scripts\bootstrap-windows-native.ps1 `
+  -Profile enterprise `
+  -ExistingProjectPolicy new
+```
+
+`ExistingProjectPolicy merge` 只复制缺失的模板文件，不覆盖已有文件。
+
 ### WinGet 进度 / 交互 / 日志
 
 默认 `WingetMode` 是 `progress`，不再使用 `--silent --disable-interactivity`，会尽量显示 winget 的安装进度并写 per-package verbose log。

@@ -60,6 +60,22 @@ param(
     [string[]]$SkipPackages = @(),
     [string[]]$OnlyPackages = @(),
 
+    # What to do when generated/tool install directories already exist but are incomplete or non-empty.
+    # prompt: ask in an interactive shell; non-interactive falls back to backup.
+    # backup: move aside to *.backup-<timestamp> and continue.
+    # clean: delete and reinstall.
+    # reuse: reuse only if the expected marker/executable exists; otherwise fail with guidance.
+    # fail: stop immediately.
+    [ValidateSet('prompt','reuse','backup','clean','fail')]
+    [string]$ExistingInstallDirPolicy = 'prompt',
+
+    # What to do when ProjectDir exists, is non-empty, but does not look like the starter project.
+    # merge copies only missing template files and never overwrites existing user files.
+    [ValidateSet('prompt','merge','new','fail')]
+    [string]$ExistingProjectPolicy = 'prompt',
+
+    [switch]$ForceReinstallTools,
+
     [switch]$NoRemoteScripts,
     [switch]$SkipNvidiaPreflight,
     [switch]$UseDefaults,
@@ -124,6 +140,99 @@ function Set-UserEnvValue([string]$Name, [string]$Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) { return }
     [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
     Set-Item -Path "env:$Name" -Value $Value
+}
+
+function Test-PathNonEmpty([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $true }
+    $item = Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+    return $null -ne $item
+}
+
+function New-TimestampedSiblingPath([string]$Path, [string]$Suffix) {
+    $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    return "{0}.{1}-{2}" -f $Path, $Suffix, $timestamp
+}
+
+function Move-PathAside([string]$Path, [string]$Suffix = 'backup') {
+    if (-not (Test-Path -LiteralPath $Path)) { return $Path }
+    $backup = New-TimestampedSiblingPath -Path $Path -Suffix $Suffix
+    Write-Warning ("Moving existing path aside: {0} -> {1}" -f $Path, $backup)
+    if (-not $DryRun) {
+        Move-Item -LiteralPath $Path -Destination $backup -Force
+    }
+    return $backup
+}
+
+function Resolve-IncompleteGeneratedDirectory(
+    [Parameter(Mandatory=$true)][string]$Label,
+    [Parameter(Mandatory=$true)][string]$Path,
+    [Parameter(Mandatory=$true)][scriptblock]$IsComplete
+) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    if (& $IsComplete) {
+        Write-Host ("Reusing existing {0}: {1}" -f $Label, $Path)
+        return
+    }
+
+    if (-not (Test-PathNonEmpty $Path)) {
+        Write-Host ("Removing empty {0} directory before reinstall: {1}" -f $Label, $Path)
+        if (-not $DryRun) { Remove-Item -LiteralPath $Path -Force }
+        return
+    }
+
+    $policy = $ExistingInstallDirPolicy
+    if ($ForceReinstallTools) { $policy = 'clean' }
+
+    if ($policy -eq 'prompt') {
+        if ((Test-InteractiveSession) -and -not ($AssumeYes -or $UseDefaults -or $NoLocationPrompts)) {
+            Write-Host ''
+            Write-Warning ("The {0} directory exists but does not look complete: {1}" -f $Label, $Path)
+            Write-Host '  [B] Backup/move it aside and install fresh (recommended)'
+            Write-Host '  [C] Clean/delete it and install fresh'
+            Write-Host '  [F] Fail now'
+            $answer = Read-Host 'Choose action [B/c/f]'
+            switch -Regex ($answer.Trim().ToLowerInvariant()) {
+                '^c' { $policy = 'clean' }
+                '^f' { $policy = 'fail' }
+                default { $policy = 'backup' }
+            }
+        } else {
+            $policy = 'backup'
+        }
+    }
+
+    switch ($policy) {
+        'backup' { Move-PathAside -Path $Path -Suffix 'incomplete' | Out-Null }
+        'clean' {
+            Write-Warning ("Deleting incomplete {0} directory: {1}" -f $Label, $Path)
+            if (-not $DryRun) { Remove-Item -LiteralPath $Path -Recurse -Force }
+        }
+        'reuse' { throw ("Cannot reuse {0}: expected markers are missing under {1}. Use -ExistingInstallDirPolicy backup or clean." -f $Label, $Path) }
+        'fail' { throw ("Refusing to continue because {0} exists but is incomplete: {1}" -f $Label, $Path) }
+        default { Move-PathAside -Path $Path -Suffix 'incomplete' | Out-Null }
+    }
+}
+
+function Copy-DirectoryMissingOnly([string]$SourceDir, [string]$DestinationDir) {
+    $sourceRoot = (Resolve-Path -LiteralPath $SourceDir).Path.TrimEnd([char[]]@('\','/'))
+    New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
+
+    Get-ChildItem -LiteralPath $SourceDir -Force -Recurse | ForEach-Object {
+        $relative = $_.FullName.Substring($sourceRoot.Length).TrimStart([char[]]@('\','/'))
+        if (-not [string]::IsNullOrWhiteSpace($relative)) {
+            $target = Join-Path $DestinationDir $relative
+            if ($_.PSIsContainer) {
+                New-Item -ItemType Directory -Force -Path $target | Out-Null
+            } elseif (-not (Test-Path -LiteralPath $target)) {
+                New-Item -ItemType Directory -Force -Path (Split-Path $target -Parent) | Out-Null
+                Copy-Item -LiteralPath $_.FullName -Destination $target
+            } else {
+                Write-Host ("Keeping existing project file: {0}" -f $target)
+            }
+        }
+    }
 }
 
 function Normalize-Features([string[]]$InputFeatures) {
@@ -326,6 +435,8 @@ function Show-BootstrapPlan() {
     Write-Host "  MLflow dir:     $script:MlrunsDir"
     Write-Host "  uv cache:       $script:UvCacheDir"
     Write-Host "  uv Python dir:  $script:UvPythonInstallDir"
+    Write-Host "  Existing tools: $ExistingInstallDirPolicy"
+    Write-Host "  Existing project:$ExistingProjectPolicy"
     if (-not [string]::IsNullOrWhiteSpace($script:WingetInstallLocation)) {
         Write-Host "  WinGet location:$script:WingetInstallLocation"
     } else {
@@ -387,46 +498,106 @@ function Apply-ProfileEnvironment() {
 
 function Install-Uv() {
     Apply-ProfileEnvironment
+
+    $uvExe = Join-Path $script:UvInstallDir 'uv.exe'
+    if ((-not (Test-Command uv)) -and (Test-Path -LiteralPath $uvExe)) {
+        $env:Path = "$script:UvInstallDir;$env:Path"
+    }
+
     if (Test-Command uv) {
         Write-Host "uv already available: $((Get-Command uv).Source)"
         return
     }
+
     try {
         Install-WingetPackage -Id 'astral-sh.uv' -Commands @('uv') -SupportsLocation
     } catch {
         Write-Warning ("winget uv install failed: {0}" -f $_.Exception.Message)
     }
+
     if (-not (Test-Command uv)) {
         if ($Profile -eq 'enterprise' -or $NoRemoteScripts) {
             throw 'uv is not installed. In enterprise/no-remote-scripts mode, install uv through an approved package source, then re-run.'
         }
+
+        Resolve-IncompleteGeneratedDirectory `
+            -Label 'uv standalone install' `
+            -Path $script:UvInstallDir `
+            -IsComplete { Test-Path -LiteralPath (Join-Path $script:UvInstallDir 'uv.exe') }
+
         Write-Host 'Installing uv with the official standalone installer.'
         New-Item -ItemType Directory -Force -Path $script:UvInstallDir | Out-Null
         $env:UV_INSTALL_DIR = $script:UvInstallDir
         powershell -ExecutionPolicy ByPass -NoProfile -Command "irm https://astral.sh/uv/install.ps1 | iex"
-        if (Test-Path $script:UvInstallDir) { $env:Path = "$script:UvInstallDir;$env:Path" }
+        if (Test-Path -LiteralPath $script:UvInstallDir) { $env:Path = "$script:UvInstallDir;$env:Path" }
     }
     if (-not (Test-Command uv)) { throw 'uv installation failed or uv is not on PATH.' }
 }
 
 function Copy-StarterProject() {
     $template = Join-Path $RepoRoot 'templates\ai-starter'
-    if (-not (Test-Path $template)) { throw "Template project not found: $template" }
+    if (-not (Test-Path -LiteralPath $template)) { throw "Template project not found: $template" }
 
-    if (-not (Test-Path $script:ProjectDir)) {
+    $marker = Join-Path $script:ProjectDir 'pyproject.toml'
+    $preserveExistingProfileFile = $false
+
+    if (-not (Test-Path -LiteralPath $script:ProjectDir)) {
         New-Item -ItemType Directory -Force -Path $script:ProjectDir | Out-Null
         Copy-Item -Path (Join-Path $template '*') -Destination $script:ProjectDir -Recurse -Force
+    } elseif (Test-Path -LiteralPath $marker) {
+        Write-Host "Reusing existing starter project: $script:ProjectDir"
+    } elseif (-not (Test-PathNonEmpty $script:ProjectDir)) {
+        Write-Host "Project directory exists but is empty; copying starter template: $script:ProjectDir"
+        Copy-Item -Path (Join-Path $template '*') -Destination $script:ProjectDir -Recurse -Force
     } else {
-        Write-Host "Project directory already exists: $script:ProjectDir"
-        $marker = Join-Path $script:ProjectDir 'pyproject.toml'
-        if (-not (Test-Path $marker)) {
-            Copy-Item -Path (Join-Path $template '*') -Destination $script:ProjectDir -Recurse -Force
+        $policy = $ExistingProjectPolicy
+        if ($policy -eq 'prompt') {
+            if ((Test-InteractiveSession) -and -not ($AssumeYes -or $UseDefaults -or $NoLocationPrompts)) {
+                Write-Host ''
+                Write-Warning "Project directory is non-empty and has no pyproject.toml: $script:ProjectDir"
+                Write-Host '  [M] Merge starter template into it, copying only missing files (recommended)'
+                Write-Host '  [N] Create a new timestamped starter project directory'
+                Write-Host '  [F] Fail now'
+                $answer = Read-Host 'Choose action [M/n/f]'
+                switch -Regex ($answer.Trim().ToLowerInvariant()) {
+                    '^n' { $policy = 'new' }
+                    '^f' { $policy = 'fail' }
+                    default { $policy = 'merge' }
+                }
+            } else {
+                $policy = 'merge'
+            }
+        }
+
+        switch ($policy) {
+            'merge' {
+                Write-Host 'Merging starter template without overwriting existing files.'
+                Copy-DirectoryMissingOnly -SourceDir $template -DestinationDir $script:ProjectDir
+                $preserveExistingProfileFile = $true
+            }
+            'new' {
+                $newProjectDir = New-TimestampedSiblingPath -Path $script:ProjectDir -Suffix 'bootstrap'
+                Write-Warning "Using a new starter project directory: $newProjectDir"
+                $script:ProjectDir = $newProjectDir
+                New-Item -ItemType Directory -Force -Path $script:ProjectDir | Out-Null
+                Copy-Item -Path (Join-Path $template '*') -Destination $script:ProjectDir -Recurse -Force
+            }
+            'fail' { throw "Project directory exists, is non-empty, and does not contain pyproject.toml: $script:ProjectDir" }
+            default {
+                Copy-DirectoryMissingOnly -SourceDir $template -DestinationDir $script:ProjectDir
+                $preserveExistingProfileFile = $true
+            }
         }
     }
 
     $profileFile = Join-Path $RepoRoot "profiles\$Profile.env"
-    if (Test-Path $profileFile) {
-        Copy-Item $profileFile (Join-Path $script:ProjectDir '.env.profile') -Force
+    if (Test-Path -LiteralPath $profileFile) {
+        $profileTarget = Join-Path $script:ProjectDir '.env.profile'
+        if ($preserveExistingProfileFile -and (Test-Path -LiteralPath $profileTarget)) {
+            Write-Host ("Keeping existing project profile file: {0}" -f $profileTarget)
+        } else {
+            Copy-Item $profileFile $profileTarget -Force
+        }
     }
 }
 
@@ -447,14 +618,14 @@ function Install-RequirementsFile([string]$RelativePath) {
 }
 
 function Test-CondaEnvironmentPrefix {
-    param([Parameter(Mandatory)][string]$Prefix)
+    param([Parameter(Mandatory=$true)][string]$Prefix)
 
     $historyFile = Join-Path $Prefix 'conda-meta\history'
     return (Test-Path $historyFile)
 }
 
 function Move-IncompleteCondaEnvironmentPrefix {
-    param([Parameter(Mandatory)][string]$Prefix)
+    param([Parameter(Mandatory=$true)][string]$Prefix)
 
     if (-not (Test-Path $Prefix)) { return }
     if (Test-CondaEnvironmentPrefix -Prefix $Prefix) { return }
@@ -470,7 +641,14 @@ function Move-IncompleteCondaEnvironmentPrefix {
 
 function Install-NativeCondaEnv() {
     $installer = Join-Path $RepoRoot 'scripts\install-miniforge-windows.ps1'
-    & $installer -InstallDir $script:MiniforgeDir -InstallerPath $MiniforgeInstallerPath -NoRemoteScripts:$NoRemoteScripts -DryRun:$DryRun
+    & $installer `
+        -InstallDir $script:MiniforgeDir `
+        -InstallerPath $MiniforgeInstallerPath `
+        -ExistingDirPolicy $ExistingInstallDirPolicy `
+        -NoRemoteScripts:$NoRemoteScripts `
+        -Force:$ForceReinstallTools `
+        -AssumeYes:($AssumeYes -or $UseDefaults -or $NoLocationPrompts) `
+        -DryRun:$DryRun
 
     $mambaExe = Join-Path $script:MiniforgeDir 'Scripts\mamba.exe'
     $condaExe = Join-Path $script:MiniforgeDir 'Scripts\conda.exe'
@@ -489,7 +667,10 @@ function Install-NativeCondaEnv() {
     $envPrefix = Join-Path $script:MiniforgeDir ("envs\{0}" -f $envName)
     if (-not (Test-Path $envFile)) { throw "Conda env file not found: $envFile" }
 
-    Move-IncompleteCondaEnvironmentPrefix -Prefix $envPrefix
+    Resolve-IncompleteGeneratedDirectory `
+        -Label 'conda/mamba environment' `
+        -Path $envPrefix `
+        -IsComplete { Test-CondaEnvironmentPrefix -Prefix $envPrefix }
 
     if (Test-CondaEnvironmentPrefix -Prefix $envPrefix) {
         Write-Host "Updating existing conda/mamba environment: $envName ($envPrefix)"
@@ -605,8 +786,19 @@ if (Has-Feature 'ai') {
         try {
             & uv python install $PythonVersion
             if ($LASTEXITCODE -ne 0) { throw "uv python install failed with exit code $LASTEXITCODE" }
-            & uv venv --python $PythonVersion .venv
-            if ($LASTEXITCODE -ne 0) { throw "uv venv failed with exit code $LASTEXITCODE" }
+
+            $venvDir = Join-Path $script:ProjectDir '.venv'
+            $venvPython = Join-Path $venvDir 'Scripts\python.exe'
+            if (Test-Path -LiteralPath $venvPython) {
+                Write-Host "Reusing existing uv virtual environment: $venvDir"
+            } else {
+                Resolve-IncompleteGeneratedDirectory `
+                    -Label 'uv virtual environment' `
+                    -Path $venvDir `
+                    -IsComplete { Test-Path -LiteralPath $venvPython }
+                & uv venv --python $PythonVersion .venv
+                if ($LASTEXITCODE -ne 0) { throw "uv venv failed with exit code $LASTEXITCODE" }
+            }
 
             if ($PytorchBackend -eq 'cpu') {
                 Invoke-UvPip -ArgList @('torch','torchvision','torchaudio','--index-url','https://download.pytorch.org/whl/cpu')
