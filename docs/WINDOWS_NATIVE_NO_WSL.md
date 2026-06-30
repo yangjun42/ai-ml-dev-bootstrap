@@ -174,13 +174,28 @@ The default `WingetMode` is `progress`: the script does not pass `--silent --dis
 .\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetMode silent -UseDefaults -AssumeYes
 ```
 
-Per-package verbose logs are written to:
+Per-package verbose install logs are written to:
 
 ```text
 %TEMP%\ai-ml-dev-bootstrap\winget-logs
 ```
 
+Installed-package check output is written separately to:
+
+```text
+%TEMP%\ai-ml-dev-bootstrap\winget-checks
+```
+
 The script also prints the exact `winget` command it is about to run.
+If `winget list` hangs on a locked-down enterprise workstation, the script now times out the installed-package check and proceeds to `winget install --no-upgrade`. You can tune or bypass that check:
+
+```powershell
+# Shorten the installed-package check timeout
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetCheckTimeoutSec 10
+
+# Skip the winget list check entirely and rely on command detection + winget install --no-upgrade
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -SkipWingetInstalledCheck
+```
 
 ## Optional WinGet install location
 
@@ -201,7 +216,9 @@ Caveat: `--location` is only honored by installers that support custom install p
 Before calling winget, the script checks both:
 
 1. Whether an equivalent command already exists on PATH.
-2. Whether `winget list -e --id <package>` already sees the package.
+2. Whether a bounded `winget list -e --id <package> --source winget --accept-source-agreements --disable-interactivity` check already sees the package.
+
+The second check has a timeout because `winget list` can block when source agreements, source metadata, Store/App Installer registration, proxy, or enterprise policy are unhealthy. If it times out, the script proceeds with `winget install --no-upgrade` rather than hanging forever.
 
 Examples:
 

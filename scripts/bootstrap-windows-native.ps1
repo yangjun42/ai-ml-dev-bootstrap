@@ -52,6 +52,13 @@ param(
     [ValidateSet('progress','interactive','silent')]
     [string]$WingetMode = 'progress',
 
+    # WinGet installed-package checks can hang on some enterprise workstations
+    # when source agreements, App Installer, source metadata, or Store policies are unhealthy.
+    # Keep this check bounded and fall back to `winget install --no-upgrade`.
+    [int]$WingetCheckTimeoutSec = 45,
+    [switch]$SkipWingetInstalledCheck,
+    [string]$WingetSource = 'winget',
+
     # Backward-compatible switches from older template revisions.
     [switch]$VerboseWinget,
     [switch]$InteractiveWinget,
@@ -310,6 +317,59 @@ function Invoke-WingetInstall([string[]]$ArgsForWinget) {
     return $LASTEXITCODE
 }
 
+function Invoke-WingetInstalledCheck(
+    [Parameter(Mandatory=$true)][string]$Id
+) {
+    if ($SkipWingetInstalledCheck) {
+        Write-Host "Skipping winget installed-package check by request: $Id"
+        return $null
+    }
+
+    $logRoot = Join-Path $env:TEMP 'ai-ml-dev-bootstrap\winget-checks'
+    New-Item -ItemType Directory -Force -Path $logRoot | Out-Null
+    $safeId = $Id -replace '[^A-Za-z0-9_.-]', '_'
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $stdoutFile = Join-Path $logRoot ("{0}-{1}.stdout.txt" -f $safeId, $stamp)
+    $stderrFile = Join-Path $logRoot ("{0}-{1}.stderr.txt" -f $safeId, $stamp)
+
+    $args = @('list','-e','--id',$Id,'--accept-source-agreements','--disable-interactivity','--verbose-logs')
+    if (-not [string]::IsNullOrWhiteSpace($WingetSource)) {
+        $args += @('--source', $WingetSource)
+    }
+
+    Write-Host ("  command: winget {0}" -f ($args -join ' '))
+    Write-Host ("  check stdout: {0}" -f $stdoutFile)
+    Write-Host ("  check stderr: {0}" -f $stderrFile)
+
+    try {
+        $proc = Start-Process -FilePath 'winget' -ArgumentList $args -NoNewWindow -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile -PassThru
+        $completed = $proc.WaitForExit([Math]::Max(1, $WingetCheckTimeoutSec) * 1000)
+        if (-not $completed) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
+            Write-Warning ("winget installed-package check timed out after {0}s for {1}. Proceeding to install attempt." -f $WingetCheckTimeoutSec, $Id)
+            Write-Warning "If this keeps happening, inspect winget source/App Installer health; the check logs above may still be useful."
+            return $null
+        }
+
+        $out = ''
+        if (Test-Path -LiteralPath $stdoutFile) { $out = Get-Content -LiteralPath $stdoutFile -Raw -ErrorAction SilentlyContinue }
+        $err = ''
+        if (Test-Path -LiteralPath $stderrFile) { $err = Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue }
+
+        if ($proc.ExitCode -ne 0) {
+            Write-Warning ("winget installed-package check exited with {0} for {1}; proceeding to install attempt." -f $proc.ExitCode, $Id)
+            if (-not [string]::IsNullOrWhiteSpace($err)) { Write-Warning ($err.Trim()) }
+            return $null
+        }
+
+        if ($out -match [regex]::Escape($Id)) { return $true }
+        return $false
+    } catch {
+        Write-Warning ("winget installed-package check failed for {0}: {1}. Proceeding to install attempt." -f $Id, $_.Exception.Message)
+        return $null
+    }
+}
+
 function Install-WingetPackage(
     [string]$Id,
     [string[]]$Commands = @(),
@@ -329,8 +389,8 @@ function Install-WingetPackage(
     }
 
     Write-Host "Checking winget package: $Id"
-    $installed = winget list -e --id $Id 2>$null | Select-String -SimpleMatch $Id
-    if ($installed) {
+    $installed = Invoke-WingetInstalledCheck -Id $Id
+    if ($installed -eq $true) {
         Write-Host "winget package already installed: $Id"
         return
     }
@@ -347,8 +407,12 @@ function Install-WingetPackage(
     $baseArgs = @(
         'install','-e','--id',$Id,
         '--accept-source-agreements','--accept-package-agreements',
+        '--no-upgrade',
         '--log',$logFile
     )
+    if (-not [string]::IsNullOrWhiteSpace($WingetSource)) {
+        $baseArgs += @('--source', $WingetSource)
+    }
 
     # Keep verbose logs enabled by default. The old -VerboseWinget switch remains accepted.
     if ($script:WingetVerboseLogs -or $VerboseWinget) { $baseArgs += '--verbose-logs' }
@@ -428,6 +492,8 @@ function Show-BootstrapPlan() {
     Write-Host "  Profile:        $Profile"
     Write-Host "  Features:       $($Features -join ',')"
     Write-Host "  Winget mode:    $WingetMode"
+    Write-Host "  Winget source:  $WingetSource"
+    Write-Host "  Winget check timeout: $WingetCheckTimeoutSec sec"
     Write-Host "  Install root:   $script:InstallRoot"
     Write-Host "  Project dir:    $script:ProjectDir"
     Write-Host "  Miniforge dir:  $script:MiniforgeDir"

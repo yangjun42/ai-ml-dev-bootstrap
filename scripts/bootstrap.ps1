@@ -41,6 +41,10 @@ param(
     [ValidateSet('progress','interactive','silent')]
     [string]$WingetMode = 'progress',
 
+    [int]$WingetCheckTimeoutSec = 45,
+    [switch]$SkipWingetInstalledCheck,
+    [string]$WingetSource = 'winget',
+
     [string[]]$SkipPackages = @(),
     [string[]]$OnlyPackages = @(),
 
@@ -108,6 +112,8 @@ if ($Backend -eq 'native') {
         UvInstallDir = $UvInstallDir
         WingetInstallLocation = $WingetInstallLocation
         WingetMode = $WingetMode
+        WingetCheckTimeoutSec = $WingetCheckTimeoutSec
+        WingetSource = $WingetSource
         SkipPackages = $SkipPackages
         OnlyPackages = $OnlyPackages
         ExistingInstallDirPolicy = $ExistingInstallDirPolicy
@@ -124,6 +130,7 @@ if ($Backend -eq 'native') {
     if ($NoLocationPrompts) { $nativeArgs.NoLocationPrompts = $true }
     if ($AssumeYes) { $nativeArgs.AssumeYes = $true }
     if ($ForceReinstallTools) { $nativeArgs.ForceReinstallTools = $true }
+    if ($SkipWingetInstalledCheck) { $nativeArgs.SkipWingetInstalledCheck = $true }
     & $NativeBootstrap @nativeArgs
     return
 }
