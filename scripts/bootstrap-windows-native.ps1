@@ -56,6 +56,10 @@ param(
     # when source agreements, App Installer, source metadata, or Store policies are unhealthy.
     # Keep this check bounded and fall back to `winget install --no-upgrade`.
     [int]$WingetCheckTimeoutSec = 45,
+
+    # Bound winget install/download time. 0 disables the timeout and lets winget run until it exits.
+    [int]$WingetInstallTimeoutSec = 1800,
+
     [switch]$SkipWingetInstalledCheck,
     [string]$WingetSource = 'winget',
 
@@ -300,6 +304,144 @@ function Test-AnyCommand([string[]]$Names) {
     return $false
 }
 
+function Get-PathEntries([string]$PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return @() }
+    return @($PathValue -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+}
+
+function Add-DirectoryToCurrentPath([string]$Directory, [switch]$PersistUser) {
+    if ([string]::IsNullOrWhiteSpace($Directory)) { return }
+    $expanded = Expand-PathValue $Directory
+    if (-not (Test-Path -LiteralPath $expanded -PathType Container)) { return }
+
+    $currentEntries = Get-PathEntries $env:Path
+    $alreadyInCurrent = $false
+    foreach ($entry in $currentEntries) {
+        if ($entry.TrimEnd('\') -ieq $expanded.TrimEnd('\')) { $alreadyInCurrent = $true; break }
+    }
+    if (-not $alreadyInCurrent) {
+        $env:Path = "$expanded;$env:Path"
+        Write-Host "Added to current process PATH: $expanded"
+    }
+
+    if ($PersistUser) {
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $userEntries = Get-PathEntries $userPath
+        $alreadyInUser = $false
+        foreach ($entry in $userEntries) {
+            if ($entry.TrimEnd('\') -ieq $expanded.TrimEnd('\')) { $alreadyInUser = $true; break }
+        }
+        if (-not $alreadyInUser) {
+            $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $expanded } else { "$expanded;$userPath" }
+            [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+            Write-Host "Persisted to user PATH: $expanded"
+        }
+    }
+}
+
+function Refresh-CurrentProcessPath() {
+    $entries = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($scope in @('Machine','User')) {
+        $pathValue = [Environment]::GetEnvironmentVariable('Path', $scope)
+        foreach ($entry in (Get-PathEntries $pathValue)) { $entries.Add($entry) }
+    }
+    foreach ($entry in (Get-PathEntries $env:Path)) { $entries.Add($entry) }
+
+    $commonDirs = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'),
+        (Join-Path $env:USERPROFILE '.local\bin'),
+        (Join-Path $env:USERPROFILE '.cargo\bin')
+    )
+    if ($env:ProgramFiles) {
+        $commonDirs += @(
+            (Join-Path $env:ProgramFiles 'WinGet\Links'),
+            (Join-Path $env:ProgramFiles 'Microsoft\WinGet\Links')
+        )
+    }
+    if (${env:ProgramFiles(x86)}) {
+        $commonDirs += @(Join-Path ${env:ProgramFiles(x86)} 'WinGet\Links')
+    }
+    foreach ($dir in $commonDirs) {
+        if (-not [string]::IsNullOrWhiteSpace($dir) -and (Test-Path -LiteralPath $dir -PathType Container)) {
+            $entries.Add($dir)
+        }
+    }
+
+    $seen = @{}
+    $ordered = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($entry in $entries) {
+        if ([string]::IsNullOrWhiteSpace($entry)) { continue }
+        $key = $entry.TrimEnd('\').ToLowerInvariant()
+        if (-not $seen.ContainsKey($key)) {
+            $seen[$key] = $true
+            $ordered.Add($entry)
+        }
+    }
+    $env:Path = ($ordered -join ';')
+}
+
+function Find-UvExecutable() {
+    $candidateFiles = New-Object 'System.Collections.Generic.List[string]'
+
+    if (-not [string]::IsNullOrWhiteSpace($script:UvInstallDir)) {
+        $candidateFiles.Add((Join-Path $script:UvInstallDir 'uv.exe'))
+    }
+
+    $candidateFiles.Add((Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\uv.exe'))
+    $candidateFiles.Add((Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\uv.exe'))
+    $candidateFiles.Add((Join-Path $env:USERPROFILE '.local\bin\uv.exe'))
+    $candidateFiles.Add((Join-Path $env:USERPROFILE '.cargo\bin\uv.exe'))
+    if ($env:ProgramFiles) {
+        $candidateFiles.Add((Join-Path $env:ProgramFiles 'WinGet\Links\uv.exe'))
+        $candidateFiles.Add((Join-Path $env:ProgramFiles 'Microsoft\WinGet\Links\uv.exe'))
+    }
+
+    foreach ($file in $candidateFiles) {
+        if (-not [string]::IsNullOrWhiteSpace($file) -and (Test-Path -LiteralPath $file -PathType Leaf)) {
+            return (Resolve-Path -LiteralPath $file).Path
+        }
+    }
+
+    foreach ($root in @((Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'), (Join-Path $env:ProgramFiles 'WinGet\Packages'), (Join-Path $env:ProgramFiles 'Microsoft\WinGet\Packages'))) {
+        if ([string]::IsNullOrWhiteSpace($root) -or -not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+        try {
+            $match = Get-ChildItem -LiteralPath $root -Filter 'uv.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($match) { return $match.FullName }
+        } catch { }
+    }
+
+    return $null
+}
+
+function Resolve-UvAvailability([switch]$PersistUserPath) {
+    Refresh-CurrentProcessPath
+
+    if (Test-Command uv) {
+        Write-Host "uv available: $((Get-Command uv).Source)"
+        return $true
+    }
+
+    $uvPath = Find-UvExecutable
+    if (-not [string]::IsNullOrWhiteSpace($uvPath)) {
+        $uvDir = Split-Path -Parent $uvPath
+        Write-Host "Found uv executable outside current PATH: $uvPath"
+        Add-DirectoryToCurrentPath -Directory $uvDir -PersistUser:$PersistUserPath
+        if (Test-Command uv) {
+            Write-Host "uv available after PATH refresh: $((Get-Command uv).Source)"
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Format-CommandLineArgument([string]$Arg) {
+    if ($null -eq $Arg) { return '""' }
+    if ($Arg -notmatch '[\s"]') { return $Arg }
+    return '"' + ($Arg -replace '"', '\"') + '"'
+}
+
 function Test-VSBuildToolsInstalled() {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (-not (Test-Path $vswhere)) { return $false }
@@ -313,8 +455,26 @@ function Test-VSBuildToolsInstalled() {
 
 function Invoke-WingetInstall([string[]]$ArgsForWinget) {
     Write-Host ("  command: winget {0}" -f ($ArgsForWinget -join ' '))
-    & winget @ArgsForWinget
-    return $LASTEXITCODE
+
+    if ($WingetInstallTimeoutSec -le 0) {
+        & winget @ArgsForWinget
+        return $LASTEXITCODE
+    }
+
+    $argLine = ($ArgsForWinget | ForEach-Object { Format-CommandLineArgument $_ }) -join ' '
+    try {
+        $proc = Start-Process -FilePath 'winget' -ArgumentList $argLine -NoNewWindow -PassThru
+        $completed = $proc.WaitForExit([Math]::Max(1, $WingetInstallTimeoutSec) * 1000)
+        if (-not $completed) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { }
+            Write-Warning ("winget install timed out after {0}s. This often indicates network/proxy/source policy problems, a hidden installer prompt, or App Installer service issues." -f $WingetInstallTimeoutSec)
+            return 1460
+        }
+        return $proc.ExitCode
+    } catch {
+        Write-Warning ("Failed to start winget: {0}" -f $_.Exception.Message)
+        return 1
+    }
 }
 
 function Invoke-WingetInstalledCheck(
@@ -390,9 +550,18 @@ function Install-WingetPackage(
 
     Write-Host "Checking winget package: $Id"
     $installed = Invoke-WingetInstalledCheck -Id $Id
+    $wingetReportsInstalledButCommandMissing = $false
     if ($installed -eq $true) {
         Write-Host "winget package already installed: $Id"
-        return
+        if ($Commands -and -not (Test-AnyCommand $Commands)) {
+            Write-Warning "WinGet reports $Id is installed, but expected command(s) are not on PATH: $($Commands -join ', ')"
+            Write-Warning 'Refreshing PATH and searching common WinGet/App Installer link locations before deciding to reinstall.'
+            Refresh-CurrentProcessPath
+            if (Test-AnyCommand $Commands) { return }
+            $wingetReportsInstalledButCommandMissing = $true
+        } else {
+            return
+        }
     }
 
     $logRoot = Join-Path $env:TEMP 'ai-ml-dev-bootstrap\winget-logs'
@@ -407,9 +576,14 @@ function Install-WingetPackage(
     $baseArgs = @(
         'install','-e','--id',$Id,
         '--accept-source-agreements','--accept-package-agreements',
-        '--no-upgrade',
         '--log',$logFile
     )
+    if ($wingetReportsInstalledButCommandMissing) {
+        Write-Warning "Attempting a WinGet repair/reinstall for $Id because package registration exists but command discovery failed."
+        $baseArgs += '--force'
+    } else {
+        $baseArgs += '--no-upgrade'
+    }
     if (-not [string]::IsNullOrWhiteSpace($WingetSource)) {
         $baseArgs += @('--source', $WingetSource)
     }
@@ -442,6 +616,14 @@ function Install-WingetPackage(
 
     if ($exitCode -ne 0) {
         throw "winget install failed for $Id with exit code $exitCode. Log: $logFile"
+    }
+
+    if ($Commands) {
+        Refresh-CurrentProcessPath
+        if (-not (Test-AnyCommand $Commands)) {
+            Write-Warning "WinGet finished for $Id, but expected command(s) are still not visible in the current PowerShell: $($Commands -join ', ')"
+            Write-Warning 'A new PowerShell session may see updated PATH. The uv installer has extra discovery logic; other tools may require manual PATH adjustment.'
+        }
     }
 }
 
@@ -494,6 +676,7 @@ function Show-BootstrapPlan() {
     Write-Host "  Winget mode:    $WingetMode"
     Write-Host "  Winget source:  $WingetSource"
     Write-Host "  Winget check timeout: $WingetCheckTimeoutSec sec"
+    Write-Host "  Winget install timeout: $WingetInstallTimeoutSec sec"
     Write-Host "  Install root:   $script:InstallRoot"
     Write-Host "  Project dir:    $script:ProjectDir"
     Write-Host "  Miniforge dir:  $script:MiniforgeDir"
@@ -565,15 +748,9 @@ function Apply-ProfileEnvironment() {
 function Install-Uv() {
     Apply-ProfileEnvironment
 
-    $uvExe = Join-Path $script:UvInstallDir 'uv.exe'
-    if ((-not (Test-Command uv)) -and (Test-Path -LiteralPath $uvExe)) {
-        $env:Path = "$script:UvInstallDir;$env:Path"
-    }
-
-    if (Test-Command uv) {
-        Write-Host "uv already available: $((Get-Command uv).Source)"
-        return
-    }
+    # Enterprise mode still allows installation through WinGet, because it is a package source that can be
+    # allow-listed, logged, proxied, and mirrored by IT. It does not run the remote PowerShell installer.
+    if (Resolve-UvAvailability -PersistUserPath) { return }
 
     try {
         Install-WingetPackage -Id 'astral-sh.uv' -Commands @('uv') -SupportsLocation
@@ -581,23 +758,46 @@ function Install-Uv() {
         Write-Warning ("winget uv install failed: {0}" -f $_.Exception.Message)
     }
 
-    if (-not (Test-Command uv)) {
-        if ($Profile -eq 'enterprise' -or $NoRemoteScripts) {
-            throw 'uv is not installed. In enterprise/no-remote-scripts mode, install uv through an approved package source, then re-run.'
-        }
+    if (Resolve-UvAvailability -PersistUserPath) { return }
 
-        Resolve-IncompleteGeneratedDirectory `
-            -Label 'uv standalone install' `
-            -Path $script:UvInstallDir `
-            -IsComplete { Test-Path -LiteralPath (Join-Path $script:UvInstallDir 'uv.exe') }
-
-        Write-Host 'Installing uv with the official standalone installer.'
-        New-Item -ItemType Directory -Force -Path $script:UvInstallDir | Out-Null
-        $env:UV_INSTALL_DIR = $script:UvInstallDir
-        powershell -ExecutionPolicy ByPass -NoProfile -Command "irm https://astral.sh/uv/install.ps1 | iex"
-        if (Test-Path -LiteralPath $script:UvInstallDir) { $env:Path = "$script:UvInstallDir;$env:Path" }
+    if ($Profile -eq 'enterprise' -or $NoRemoteScripts) {
+        $logRoot = Join-Path $env:TEMP 'ai-ml-dev-bootstrap\winget-logs'
+        $checkRoot = Join-Path $env:TEMP 'ai-ml-dev-bootstrap\winget-checks'
+        $message = @(
+            'uv is still not available after the approved WinGet installation path was attempted.',
+            'This usually means one of the following:',
+            '  1. WinGet says astral-sh.uv is installed, but its executable link was not created or is blocked.',
+            '  2. PATH was updated but this PowerShell session cannot see it yet.',
+            '  3. WinGet/App Installer/source/proxy policy blocked download or repair.',
+            '  4. The package is installed for a different user/scope.',
+            '',
+            'Try these checks in a new PowerShell:',
+            '  winget list -e --id astral-sh.uv --source winget',
+            '  winget install -e --id astral-sh.uv --source winget --accept-source-agreements --accept-package-agreements --force --verbose-logs',
+            '  where.exe uv',
+            '  Get-Command uv -All',
+            '',
+            "WinGet install logs: $logRoot",
+            "WinGet check logs:   $checkRoot",
+            '',
+            'Enterprise/no-remote-scripts mode will not run `irm https://astral.sh/uv/install.ps1 | iex` automatically.'
+        ) -join "`n"
+        throw $message
     }
-    if (-not (Test-Command uv)) { throw 'uv installation failed or uv is not on PATH.' }
+
+    Resolve-IncompleteGeneratedDirectory `
+        -Label 'uv standalone install' `
+        -Path $script:UvInstallDir `
+        -IsComplete { Test-Path -LiteralPath (Join-Path $script:UvInstallDir 'uv.exe') }
+
+    Write-Host 'Installing uv with the official standalone installer.'
+    Write-Host '  This path is used only outside enterprise/no-remote-scripts mode.'
+    New-Item -ItemType Directory -Force -Path $script:UvInstallDir | Out-Null
+    $env:UV_INSTALL_DIR = $script:UvInstallDir
+    powershell -ExecutionPolicy ByPass -NoProfile -Command "irm https://astral.sh/uv/install.ps1 | iex"
+    if (Resolve-UvAvailability -PersistUserPath) { return }
+
+    throw 'uv installation failed or uv is not on PATH after WinGet/standalone attempts.'
 }
 
 function Copy-StarterProject() {

@@ -42,6 +42,7 @@ param(
     [string]$WingetMode = 'progress',
 
     [int]$WingetCheckTimeoutSec = 45,
+    [int]$WingetInstallTimeoutSec = 1800,
     [switch]$SkipWingetInstalledCheck,
     [string]$WingetSource = 'winget',
 
@@ -113,6 +114,7 @@ if ($Backend -eq 'native') {
         WingetInstallLocation = $WingetInstallLocation
         WingetMode = $WingetMode
         WingetCheckTimeoutSec = $WingetCheckTimeoutSec
+        WingetInstallTimeoutSec = $WingetInstallTimeoutSec
         WingetSource = $WingetSource
         SkipPackages = $SkipPackages
         OnlyPackages = $OnlyPackages
@@ -120,6 +122,7 @@ if ($Backend -eq 'native') {
         ExistingProjectPolicy = $ExistingProjectPolicy
     }
     if ($MiniforgeInstallerPath) { $nativeArgs.MiniforgeInstallerPath = $MiniforgeInstallerPath }
+    if ($SkipWingetInstalledCheck) { $nativeArgs.SkipWingetInstalledCheck = $true }
     if ($NoRemoteScripts) { $nativeArgs.NoRemoteScripts = $true }
     if ($SkipNvidiaPreflight) { $nativeArgs.SkipNvidiaPreflight = $true }
     if ($DryRun) { $nativeArgs.DryRun = $true }
@@ -130,7 +133,6 @@ if ($Backend -eq 'native') {
     if ($NoLocationPrompts) { $nativeArgs.NoLocationPrompts = $true }
     if ($AssumeYes) { $nativeArgs.AssumeYes = $true }
     if ($ForceReinstallTools) { $nativeArgs.ForceReinstallTools = $true }
-    if ($SkipWingetInstalledCheck) { $nativeArgs.SkipWingetInstalledCheck = $true }
     & $NativeBootstrap @nativeArgs
     return
 }

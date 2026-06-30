@@ -139,7 +139,20 @@ WinGet 日志：
 
 ```text
 %TEMP%\ai-ml-dev-bootstrap\winget-logs
+%TEMP%\ai-ml-dev-bootstrap\winget-checks
 ```
+
+企业机器上如果 WinGet 下载或安装长时间不返回，脚本现在有安装超时；超时后会报出更明确的网络、代理、App Installer 或策略问题，而不是无限等待。
+
+```powershell
+# 缩短安装/下载超时，0 表示不设置超时
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetInstallTimeoutSec 600
+
+# 如果 winget list 检测不可靠，跳过检测，直接尝试 winget install
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -SkipWingetInstalledCheck
+```
+
+如果看到 `A package version is already installed. Installation cancelled.` 但随后 `uv` 找不到，新版会刷新 PATH、查找 WinGet link 目录，并在必要时尝试 `winget install ... --force` 修复；enterprise 模式仍不会自动运行远程 `irm ... | iex` 安装脚本。
 
 可选地给支持安装位置的 winget 包传 `--location`：
 

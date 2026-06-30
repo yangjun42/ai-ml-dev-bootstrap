@@ -187,7 +187,7 @@ Installed-package check output is written separately to:
 ```
 
 The script also prints the exact `winget` command it is about to run.
-If `winget list` hangs on a locked-down enterprise workstation, the script now times out the installed-package check and proceeds to `winget install --no-upgrade`. You can tune or bypass that check:
+If `winget list` hangs on a locked-down enterprise workstation, the script now times out the installed-package check and proceeds to `winget install --no-upgrade`. WinGet install/download itself is also bounded by `WingetInstallTimeoutSec`; a timeout usually points to source, proxy, App Installer, hidden prompt, or enterprise policy problems. You can tune or bypass the checks:
 
 ```powershell
 # Shorten the installed-package check timeout
@@ -195,6 +195,28 @@ If `winget list` hangs on a locked-down enterprise workstation, the script now t
 
 # Skip the winget list check entirely and rely on command detection + winget install --no-upgrade
 .\scripts\bootstrap-windows-native.ps1 -Profile enterprise -SkipWingetInstalledCheck
+
+# Shorten the install/download timeout; 0 disables the timeout
+.\scripts\bootstrap-windows-native.ps1 -Profile enterprise -WingetInstallTimeoutSec 600
+```
+
+### uv package installed but `uv` command not found
+
+Some machines report this pattern:
+
+```text
+A package version is already installed. Installation cancelled.
+uv is not installed ...
+```
+
+That means WinGet package registration exists, but the `uv.exe` command is not visible to the current PowerShell session. The script now handles this by refreshing the current process PATH, checking the user and machine PATH, scanning common WinGet link directories such as `%LOCALAPPDATA%\Microsoft\WinGet\Links`, and persisting the discovered uv directory to user PATH when found. If WinGet says `astral-sh.uv` is installed but the command still cannot be found, the script attempts a bounded WinGet repair/reinstall using `--force`.
+
+Enterprise mode still does **not** run the remote `irm https://astral.sh/uv/install.ps1 | iex` installer. It only uses WinGet by default. If WinGet is blocked or the package link cannot be created, the error message points to the WinGet logs and manual checks.
+```powershell
+winget list -e --id astral-sh.uv --source winget
+winget install -e --id astral-sh.uv --source winget --accept-source-agreements --accept-package-agreements --force --verbose-logs
+where.exe uv
+Get-Command uv -All
 ```
 
 ## Optional WinGet install location
@@ -287,7 +309,7 @@ where cl             # only expected if MSVC shell/path is configured
 
 ## Restricted / offline-friendly enterprise mode
 
-In `enterprise` profile, the native script avoids the uv internet installer fallback. Install `uv` through an approved source first, or allow winget to install `astral-sh.uv` if your organization permits it.
+In `enterprise` profile, the native script avoids the uv internet installer fallback, but it does try the approved package-manager path first: `winget install -e --id astral-sh.uv --source winget`. If your organization blocks WinGet or requires an internal mirror, install `uv` through that approved source first, then re-run the bootstrap.
 
 For Miniforge in environments where direct GitHub downloads are blocked, download and approve `Miniforge3-Windows-x86_64.exe` internally, then run:
 
