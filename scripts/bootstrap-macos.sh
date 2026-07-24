@@ -23,7 +23,7 @@ Compatibility aliases:
 
 Options:
   --profile NAME  Select a profile. Default: minimal.
-  --upgrade       Allow Homebrew Bundle to upgrade installed packages.
+  --upgrade       Update Homebrew metadata and allow package upgrades.
   --dry-run       Print the selected Brewfiles without installing anything.
   -h, --help      Show this help.
 
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --features|--python)
       echo "The old project-environment options moved out of the default Mac bootstrap." >&2
-      echo "Use: bash scripts/bootstrap-macos-legacy-ai.sh $*" >&2
+      echo "Use scripts/bootstrap-macos-legacy-ai.sh only when the former full setup is explicitly required." >&2
       exit 2
       ;;
     *)
@@ -152,7 +152,11 @@ bundle_file() {
   fi
 
   log "applying $(basename "$file")"
-  HOMEBREW_NO_AUTO_UPDATE=1 brew "${args[@]}"
+  if [[ "$UPGRADE" == "1" ]]; then
+    brew "${args[@]}"
+  else
+    HOMEBREW_NO_AUTO_UPDATE=1 brew "${args[@]}"
+  fi
 }
 
 ensure_command_line_tools
@@ -211,7 +215,18 @@ Not performed by design:
   - no Ollama model downloads or background-service changes
   - no Python installation, virtual environment, or AI/ML project dependencies
   - no shell-framework or dotfile changes
+EOF
+
+if [[ "$PROFILE" == "restricted" ]]; then
+  cat <<'EOF'
+
+Restricted profile complete. Public AI apps and Ollama were intentionally not installed.
+Use organization-approved applications, mirrors, and model runtimes as required.
+EOF
+else
+  cat <<'EOF'
 
 Open ChatGPT to use ChatGPT/Codex, open Ollama once before using the CLI,
 and let each project declare its own environment with uv when needed.
 EOF
+fi
