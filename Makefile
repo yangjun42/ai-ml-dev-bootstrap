@@ -1,12 +1,29 @@
-.PHONY: mac-personal mac-enterprise verify docker-cpu docker-gpu
+.PHONY: mac-minimal mac-core mac-developer mac-workstation mac-restricted mac-personal mac-enterprise verify verify-macos verify-project docker-cpu docker-gpu
 
-mac-personal:
-	./scripts/bootstrap-macos.sh --profile personal
+mac-minimal:
+	./scripts/bootstrap-macos.sh --profile minimal
 
-mac-enterprise:
-	./scripts/bootstrap-macos.sh --profile enterprise
+mac-core: mac-minimal
 
-verify:
+mac-developer:
+	./scripts/bootstrap-macos.sh --profile developer
+
+mac-workstation:
+	./scripts/bootstrap-macos.sh --profile workstation
+
+mac-restricted:
+	./scripts/bootstrap-macos.sh --profile restricted
+
+# Backward-compatible aliases.
+mac-personal: mac-minimal
+mac-enterprise: mac-restricted
+
+verify: verify-macos
+
+verify-macos:
+	bash ./scripts/verify-macos-bootstrap.sh
+
+verify-project:
 	./scripts/verify.sh
 
 docker-cpu:
