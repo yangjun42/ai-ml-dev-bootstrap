@@ -31,10 +31,15 @@ required_minimal=(
 
 for entry in "${required_minimal[@]}"; do
   grep -Fqx "$entry" brewfiles/macos/minimal.Brewfile
- done
+done
 
 if grep -Eq '^brew "git"$' brewfiles/macos/minimal.Brewfile; then
   echo "minimal.Brewfile must use the Apple Command Line Tools Git" >&2
+  exit 1
+fi
+
+if grep -Eq '^(brew|cask) "(python(@[^\"]*)?|miniforge|pixi|colima|docker|docker-compose)"$' brewfiles/macos/minimal.Brewfile; then
+  echo "minimal.Brewfile unexpectedly contains project/runtime or workstation dependencies" >&2
   exit 1
 fi
 
@@ -48,5 +53,6 @@ done
 grep -Fq 'PROFILE="minimal"' scripts/bootstrap-macos.sh
 grep -Fq 'core|personal) PROFILE="minimal"' scripts/bootstrap-macos.sh
 grep -Fq 'enterprise) PROFILE="restricted"' scripts/bootstrap-macos.sh
+grep -Fq 'no Python installation' scripts/bootstrap-macos.sh
 
 echo "macOS bootstrap static checks passed"
