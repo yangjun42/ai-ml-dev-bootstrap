@@ -62,8 +62,9 @@ The default appearance is TokyoNight Moon/Day. Ghostty explicitly starts
 `/bin/zsh -l`, which avoids the common failure mode where a directory-managed
 account still launches `/bin/bash` and therefore never reads `.zshrc`.
 
-The minimal zsh block handles only persistent/shared history and native zsh
-completion. It does not install a prompt framework or aliases.
+The minimal zsh block restores the standard Homebrew environment when a fresh
+Apple Silicon shell does not yet have it, persists/shares history, and enables
+native zsh completion. It does not install a prompt framework or aliases.
 
 Install:
 
@@ -105,14 +106,17 @@ zsh-syntax-highlighting pre-execution command highlighting
 No Oh My Zsh or Powerlevel10k framework is installed. The tools remain
 independent, understandable, and easy to reproduce selectively on servers.
 
-The active Starship config is referenced through:
+Starship uses its official default active configuration path:
 
 ```text
-~/.config/starship/current.toml
+~/.config/starship.toml
 ```
 
-On a fresh machine it points to the generated Jetpack preset. An existing
-`~/.config/starship.toml` or existing `current.toml` is preserved.
+On a fresh machine this is a symlink to the generated Jetpack preset under
+`~/.config/starship/presets/`. An existing `~/.config/starship.toml` is left
+untouched, so an established manual `starship init zsh` setup keeps working.
+Calling `devtheme` is an explicit switch: it backs up a custom active config
+before replacing it with a preset symlink.
 
 Install:
 
@@ -198,7 +202,8 @@ The configurator follows these rules:
 - `appearance.ghostty`: install only when absent;
 - `local.ghostty`: never create or modify;
 - `.zshrc`: replace only the two marked repository-owned blocks;
-- existing Starship selection: preserve;
+- existing Starship active config: preserve;
+- explicit `devtheme` switch: back up a custom Starship config first;
 - repeated runs: do not duplicate zsh blocks or reset theme selection.
 
 Commands:
