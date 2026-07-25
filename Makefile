@@ -16,10 +16,10 @@ mac-restricted:
 
 # Apply only managed Ghostty/zsh configuration, without Homebrew installs.
 mac-config-minimal:
-	./scripts/configure-macos-shell.sh --profile minimal
+	bash ./scripts/configure-macos-shell.sh --profile minimal
 
 mac-config-developer:
-	./scripts/configure-macos-shell.sh --profile developer
+	bash ./scripts/configure-macos-shell.sh --profile developer
 
 # Backward-compatible aliases.
 mac-personal: mac-minimal
