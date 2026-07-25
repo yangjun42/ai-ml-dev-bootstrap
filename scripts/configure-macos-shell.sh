@@ -152,6 +152,7 @@ configure_zshrc() {
   local minimal_template="$REPO_ROOT/config/macos/zsh/minimal.zsh"
   local developer_template="$REPO_ROOT/config/macos/zsh/developer.zsh"
   local include_developer=0
+  local zshrc_had_content=0
 
   [[ -f "$minimal_template" && -f "$developer_template" ]] || {
     echo "Missing zsh templates under config/macos/zsh" >&2
@@ -171,6 +172,7 @@ configure_zshrc() {
     return
   fi
 
+  [[ -s "$zshrc" || -L "$zshrc" ]] && zshrc_had_content=1
   touch "$zshrc"
 
   local minimal_starts minimal_ends developer_starts developer_ends
@@ -184,17 +186,31 @@ configure_zshrc() {
     exit 1
   fi
 
-  local tmp
+  local stripped tmp
+  stripped="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc-stripped.XXXXXX")"
   tmp="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc.XXXXXX")"
+
   awk '
     $0 == "# >>> ai-ml-dev-bootstrap:macos-minimal >>>" { skip = 1; next }
     $0 == "# <<< ai-ml-dev-bootstrap:macos-minimal <<<" { skip = 0; next }
     $0 == "# >>> ai-ml-dev-bootstrap:macos-developer >>>" { skip = 1; next }
     $0 == "# <<< ai-ml-dev-bootstrap:macos-developer <<<" { skip = 0; next }
     !skip { print }
-  ' "$zshrc" > "$tmp"
+  ' "$zshrc" > "$stripped"
 
-  printf '\n' >> "$tmp"
+  # Remove only trailing blank lines from unowned user content so repeated runs
+  # do not accumulate whitespace before the managed blocks.
+  awk '
+    { lines[NR] = $0 }
+    END {
+      last = NR
+      while (last > 0 && lines[last] == "") last--
+      for (i = 1; i <= last; i++) print lines[i]
+    }
+  ' "$stripped" > "$tmp"
+  rm -f "$stripped"
+
+  [[ -s "$tmp" ]] && printf '\n\n' >> "$tmp"
   cat "$minimal_template" >> "$tmp"
   if [[ "$include_developer" == "1" ]]; then
     printf '\n' >> "$tmp"
@@ -206,7 +222,7 @@ configure_zshrc() {
     rm -f "$tmp"
     log "already current: $zshrc"
   else
-    backup_file "$zshrc" "zshrc"
+    [[ "$zshrc_had_content" == "1" ]] && backup_file "$zshrc" "zshrc"
     cat "$tmp" > "$zshrc"
     rm -f "$tmp"
     log "updated managed blocks: $zshrc"
@@ -217,11 +233,6 @@ configure_zshrc() {
 }
 
 configure_starship() {
-  if ! command -v starship >/dev/null 2>&1; then
-    echo "developer profile requires starship, but it is not on PATH" >&2
-    exit 1
-  fi
-
   local starship_root="${XDG_CONFIG_HOME:-$HOME/.config}/starship"
   local preset_root="$starship_root/presets"
   local jetpack="$preset_root/jetpack.toml"
@@ -232,6 +243,11 @@ configure_starship() {
     log "would ensure Starship Jetpack preset and current.toml"
     log "would install ~/.local/bin/devtheme"
     return
+  fi
+
+  if ! command -v starship >/dev/null 2>&1; then
+    echo "developer profile requires starship, but it is not on PATH" >&2
+    exit 1
   fi
 
   mkdir -p "$preset_root" "$HOME/.local/bin"
