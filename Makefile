@@ -1,4 +1,4 @@
-.PHONY: mac-minimal mac-core mac-developer mac-workstation mac-restricted mac-personal mac-enterprise verify verify-macos verify-project docker-cpu docker-gpu
+.PHONY: mac-minimal mac-core mac-developer mac-workstation mac-restricted mac-personal mac-enterprise mac-config-minimal mac-config-developer verify verify-macos verify-project docker-cpu docker-gpu
 
 mac-minimal:
 	./scripts/bootstrap-macos.sh --profile minimal
@@ -13,6 +13,13 @@ mac-workstation:
 
 mac-restricted:
 	./scripts/bootstrap-macos.sh --profile restricted
+
+# Apply only managed Ghostty/zsh configuration, without Homebrew installs.
+mac-config-minimal:
+	./scripts/configure-macos-shell.sh --profile minimal
+
+mac-config-developer:
+	./scripts/configure-macos-shell.sh --profile developer
 
 # Backward-compatible aliases.
 mac-personal: mac-minimal
