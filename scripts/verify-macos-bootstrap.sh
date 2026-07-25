@@ -6,12 +6,19 @@ cd "$REPO_ROOT"
 
 bash -n scripts/bootstrap-macos.sh
 bash -n scripts/bootstrap-macos-legacy-ai.sh
+bash -n scripts/configure-macos-shell.sh
+bash -n scripts/test-macos-configure.sh
+bash -n config/macos/bin/devtheme
 
 for file in \
   brewfiles/macos/minimal.Brewfile \
   brewfiles/macos/developer-extra.Brewfile \
   brewfiles/macos/workstation-extra.Brewfile \
-  brewfiles/macos/restricted.Brewfile; do
+  brewfiles/macos/restricted.Brewfile \
+  config/macos/ghostty/config.ghostty \
+  config/macos/ghostty/appearance.ghostty \
+  config/macos/zsh/minimal.zsh \
+  config/macos/zsh/developer.zsh; do
   test -f "$file"
 done
 
@@ -32,13 +39,26 @@ for entry in "${required_minimal[@]}"; do
   grep -Fqx "$entry" brewfiles/macos/minimal.Brewfile
 done
 
+required_developer=(
+  'brew "starship"'
+  'brew "zoxide"'
+  'brew "zsh-autosuggestions"'
+  'brew "zsh-syntax-highlighting"'
+  'brew "fzf"'
+  'brew "ripgrep"'
+)
+
+for entry in "${required_developer[@]}"; do
+  grep -Fqx "$entry" brewfiles/macos/developer-extra.Brewfile
+done
+
 if grep -Eq '^brew "git"$' brewfiles/macos/minimal.Brewfile; then
   echo "minimal.Brewfile must use the Apple Command Line Tools Git" >&2
   exit 1
 fi
 
-if grep -Eq '^(brew|cask) "(python(@[^\"]*)?|miniforge|pixi|colima|docker|docker-compose|rectangle)"$' brewfiles/macos/minimal.Brewfile; then
-  echo "minimal.Brewfile unexpectedly contains project/runtime, workstation, or window-manager dependencies" >&2
+if grep -Eq '^(brew|cask) "(python(@[^"]*)?|miniforge|pixi|colima|docker|docker-compose|rectangle|starship|zoxide|yazi)"$' brewfiles/macos/minimal.Brewfile; then
+  echo "minimal.Brewfile unexpectedly contains project, workstation, or developer-only dependencies" >&2
   exit 1
 fi
 
@@ -54,9 +74,26 @@ for disallowed in 'cask "chatgpt"' 'cask "claude-code"' 'cask "ollama-app"'; do
   fi
 done
 
+# Ghostty and zsh baseline invariants.
+grep -Fq 'command = /bin/zsh -l' config/macos/ghostty/config.ghostty
+grep -Fq 'shell-integration-features = ssh-env,ssh-terminfo' config/macos/ghostty/config.ghostty
+grep -Fq 'auto-update = check' config/macos/ghostty/config.ghostty
+grep -Fq 'auto-update-channel = stable' config/macos/ghostty/config.ghostty
+grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' config/macos/ghostty/appearance.ghostty
+grep -Fq '# >>> ai-ml-dev-bootstrap:macos-minimal >>>' config/macos/zsh/minimal.zsh
+grep -Fq '# >>> ai-ml-dev-bootstrap:macos-developer >>>' config/macos/zsh/developer.zsh
+grep -Fq 'STARSHIP_CONFIG="$HOME/.config/starship/current.toml"' config/macos/zsh/developer.zsh
+grep -Fq 'zoxide init zsh' config/macos/zsh/developer.zsh
+grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/developer.zsh
+
+# Bootstrap behaviour and profile aliases.
 grep -Fq 'PROFILE="minimal"' scripts/bootstrap-macos.sh
 grep -Fq 'core|personal) PROFILE="minimal"' scripts/bootstrap-macos.sh
 grep -Fq 'enterprise) PROFILE="restricted"' scripts/bootstrap-macos.sh
+grep -Fq 'bundle_is_satisfied' scripts/bootstrap-macos.sh
+grep -Fq 'configure-macos-shell.sh' scripts/bootstrap-macos.sh
 grep -Fq 'no Python installation' scripts/bootstrap-macos.sh
 
-echo "macOS bootstrap static checks passed"
+bash scripts/test-macos-configure.sh
+
+echo "macOS bootstrap static and integration checks passed"
