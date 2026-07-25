@@ -10,6 +10,14 @@ bash -n scripts/configure-macos-shell.sh
 bash -n scripts/test-macos-configure.sh
 bash -n config/macos/bin/devtheme
 
+for executable in \
+  scripts/bootstrap-macos.sh \
+  scripts/configure-macos-shell.sh \
+  scripts/test-macos-configure.sh \
+  config/macos/bin/devtheme; do
+  test -x "$executable"
+done
+
 for file in \
   brewfiles/macos/minimal.Brewfile \
   brewfiles/macos/developer-extra.Brewfile \
@@ -82,8 +90,13 @@ grep -Fq 'auto-update-channel = stable' config/macos/ghostty/config.ghostty
 grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' config/macos/ghostty/appearance.ghostty
 grep -Fq '# >>> ai-ml-dev-bootstrap:macos-minimal >>>' config/macos/zsh/minimal.zsh
 grep -Fq '# >>> ai-ml-dev-bootstrap:macos-developer >>>' config/macos/zsh/developer.zsh
+grep -Fq '! $+functions[compdef]' config/macos/zsh/minimal.zsh
 grep -Fq 'STARSHIP_CONFIG="$HOME/.config/starship/current.toml"' config/macos/zsh/developer.zsh
-grep -Fq 'zoxide init zsh' config/macos/zsh/developer.zsh
+grep -Fq '! $+functions[__zoxide_z]' config/macos/zsh/developer.zsh
+grep -Fq '! $+widgets[fzf-history-widget]' config/macos/zsh/developer.zsh
+grep -Fq 'STARSHIP_SHELL' config/macos/zsh/developer.zsh
+grep -Fq '! $+functions[_zsh_autosuggest_start]' config/macos/zsh/developer.zsh
+grep -Fq '! $+functions[_zsh_highlight]' config/macos/zsh/developer.zsh
 grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/developer.zsh
 
 # Bootstrap behaviour and profile aliases.
