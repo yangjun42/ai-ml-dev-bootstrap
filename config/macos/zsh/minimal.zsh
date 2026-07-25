@@ -14,8 +14,11 @@ setopt HIST_REDUCE_BLANKS
 setopt HIST_FIND_NO_DUPS
 setopt HIST_SAVE_NO_DUPS
 
-# Native zsh completion. Developer integrations are loaded after this block.
-autoload -Uz compinit
-compinit
+# Native zsh completion. Skip initialization when an existing unmarked config
+# has already loaded compinit; this makes adoption safe on an established Mac.
+if (( ! $+functions[compdef] )); then
+  autoload -Uz compinit
+  compinit
+fi
 zstyle ':completion:*' menu select
 # <<< ai-ml-dev-bootstrap:macos-minimal <<<
