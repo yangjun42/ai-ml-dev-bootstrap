@@ -6,6 +6,9 @@ TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ai-ml-macos-config.XXXXXX")"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 export HOME="$TEST_ROOT/home"
+# The test owns a temporary HOME. Do not let a runner-level XDG_CONFIG_HOME
+# redirect Ghostty or Starship files outside that isolated tree.
+unset XDG_CONFIG_HOME
 FAKE_BIN="$TEST_ROOT/bin"
 mkdir -p "$HOME" "$FAKE_BIN"
 
