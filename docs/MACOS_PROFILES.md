@@ -17,11 +17,12 @@ Claude Code CLI
 Ollama App
 uv
 btop
-Rectangle
 ```
 
 Git and OpenSSH are provided by macOS / Apple Command Line Tools and are
-verified rather than reinstalled with Homebrew.
+verified rather than reinstalled with Homebrew. Window tiling uses the native
+macOS window-management features, so no third-party window manager is part of
+the default profile.
 
 The corresponding package manifest is
 [`brewfiles/macos/minimal.Brewfile`](../brewfiles/macos/minimal.Brewfile).
@@ -72,6 +73,7 @@ The host bootstrap does **not** install or configure:
 - Miniforge, mamba, or Pixi;
 - Ollama model weights;
 - shell frameworks, prompts, aliases, or dotfiles;
+- third-party window managers;
 - application logins, API keys, SSH keys, or credentials;
 - running Colima containers or background services.
 
