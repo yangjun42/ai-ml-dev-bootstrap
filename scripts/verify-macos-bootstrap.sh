@@ -87,11 +87,14 @@ grep -Fq 'command = /bin/zsh -l' config/macos/ghostty/config.ghostty
 grep -Fq 'shell-integration-features = ssh-env,ssh-terminfo' config/macos/ghostty/config.ghostty
 grep -Fq 'auto-update = check' config/macos/ghostty/config.ghostty
 grep -Fq 'auto-update-channel = stable' config/macos/ghostty/config.ghostty
+grep -Fq 'config-file = ?appearance.ghostty' config/macos/ghostty/config.ghostty
 grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' config/macos/ghostty/appearance.ghostty
 grep -Fq '# >>> ai-ml-dev-bootstrap:macos-minimal >>>' config/macos/zsh/minimal.zsh
 grep -Fq '# >>> ai-ml-dev-bootstrap:macos-developer >>>' config/macos/zsh/developer.zsh
+grep -Fq '/opt/homebrew/bin/brew shellenv' config/macos/zsh/minimal.zsh
 grep -Fq '! $+functions[compdef]' config/macos/zsh/minimal.zsh
-grep -Fq 'STARSHIP_CONFIG="$HOME/.config/starship/current.toml"' config/macos/zsh/developer.zsh
+grep -Fq 'typeset -U path PATH' config/macos/zsh/developer.zsh
+grep -Fq 'STARSHIP_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/starship/current.toml"' config/macos/zsh/developer.zsh
 grep -Fq '! $+functions[__zoxide_z]' config/macos/zsh/developer.zsh
 grep -Fq '! $+widgets[fzf-history-widget]' config/macos/zsh/developer.zsh
 grep -Fq 'STARSHIP_SHELL' config/macos/zsh/developer.zsh
