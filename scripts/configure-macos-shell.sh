@@ -233,15 +233,12 @@ configure_zshrc() {
 }
 
 configure_starship() {
-  local config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-  local starship_root="$config_root/starship"
-  local preset_root="$starship_root/presets"
+  local preset_root="$HOME/.config/starship/presets"
   local jetpack="$preset_root/jetpack.toml"
-  local current="$starship_root/current.toml"
-  local legacy_default="$config_root/starship.toml"
+  local active="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would ensure Starship Jetpack preset and current.toml"
+    log "would ensure Starship Jetpack at the active config path: $active"
     log "would install ~/.local/bin/devtheme"
     return
   fi
@@ -251,7 +248,7 @@ configure_starship() {
     exit 1
   fi
 
-  mkdir -p "$preset_root" "$HOME/.local/bin"
+  mkdir -p "$preset_root" "$(dirname "$active")" "$HOME/.local/bin"
   if [[ ! -s "$jetpack" ]]; then
     starship preset jetpack -o "$jetpack"
     log "generated Starship preset: $jetpack"
@@ -259,19 +256,14 @@ configure_starship() {
     log "preserving Starship preset: $jetpack"
   fi
 
-  if [[ ! -e "$current" && ! -L "$current" ]]; then
-    if [[ -s "$legacy_default" ]]; then
-      ln -s "$legacy_default" "$current"
-      log "preserved existing Starship config through: $current"
-    else
-      ln -s "$jetpack" "$current"
-      log "selected default Starship preset: Jetpack"
-    fi
-  elif [[ -L "$current" && ! -e "$current" ]]; then
-    ln -sfn "$jetpack" "$current"
+  if [[ ! -e "$active" && ! -L "$active" ]]; then
+    ln -s "$jetpack" "$active"
+    log "selected default Starship preset: Jetpack"
+  elif [[ -L "$active" && ! -e "$active" ]]; then
+    ln -sfn "$jetpack" "$active"
     log "repaired dangling Starship preset link"
   else
-    log "preserving active Starship config: $current"
+    log "preserving active Starship config: $active"
   fi
 
   install_managed_file "$REPO_ROOT/config/macos/bin/devtheme" "$HOME/.local/bin/devtheme" 0755
