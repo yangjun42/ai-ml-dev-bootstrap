@@ -233,11 +233,12 @@ configure_zshrc() {
 }
 
 configure_starship() {
-  local starship_root="${XDG_CONFIG_HOME:-$HOME/.config}/starship"
+  local config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local starship_root="$config_root/starship"
   local preset_root="$starship_root/presets"
   local jetpack="$preset_root/jetpack.toml"
   local current="$starship_root/current.toml"
-  local legacy_default="${XDG_CONFIG_HOME:-$HOME/.config}/starship.toml"
+  local legacy_default="$config_root/starship.toml"
 
   if [[ "$DRY_RUN" == "1" ]]; then
     log "would ensure Starship Jetpack preset and current.toml"
