@@ -35,9 +35,16 @@ permissions:
   contents: read
 
 jobs:
-  static-checks:
+  linux-static-and-integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Validate scripts, manifests, and config idempotence
+        run: bash scripts/verify-macos-bootstrap.sh
+
+  macos-integration:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate with macOS shell and filesystem semantics
         run: bash scripts/verify-macos-bootstrap.sh
