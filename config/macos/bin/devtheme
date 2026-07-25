@@ -28,9 +28,9 @@ fi
 PROFILE="${1:-current}"
 GHOSTTY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
 GHOSTTY_APPEARANCE="$GHOSTTY_DIR/appearance.ghostty"
-STARSHIP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/starship"
-STARSHIP_PRESETS="$STARSHIP_DIR/presets"
-STARSHIP_CURRENT="$STARSHIP_DIR/current.toml"
+STARSHIP_PRESETS="$HOME/.config/starship/presets"
+STARSHIP_ACTIVE="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"
+BACKUP_ROOT="$HOME/.config/ai-ml-dev-bootstrap/backups"
 
 case "$PROFILE" in
   list)
@@ -43,10 +43,10 @@ case "$PROFILE" in
     else
       echo "Ghostty theme: not configured"
     fi
-    if [[ -L "$STARSHIP_CURRENT" ]]; then
-      echo "Starship: $(basename "$(readlink "$STARSHIP_CURRENT")" .toml)"
-    elif [[ -f "$STARSHIP_CURRENT" ]]; then
-      echo "Starship: custom current.toml"
+    if [[ -L "$STARSHIP_ACTIVE" ]]; then
+      echo "Starship: $(basename "$(readlink "$STARSHIP_ACTIVE")" .toml)"
+    elif [[ -f "$STARSHIP_ACTIVE" ]]; then
+      echo "Starship: custom config at $STARSHIP_ACTIVE"
     else
       echo "Starship: not configured"
     fi
@@ -84,14 +84,36 @@ if ! command -v starship >/dev/null 2>&1; then
   exit 1
 fi
 
-mkdir -p "$GHOSTTY_DIR" "$STARSHIP_PRESETS"
+mkdir -p "$GHOSTTY_DIR" "$STARSHIP_PRESETS" "$(dirname "$STARSHIP_ACTIVE")"
 PRESET_FILE="$STARSHIP_PRESETS/$STARSHIP_PRESET.toml"
 
 if [[ "$REFRESH" == "1" || ! -s "$PRESET_FILE" ]]; then
   starship preset "$STARSHIP_PRESET" -o "$PRESET_FILE"
 fi
 
-ln -sfn "$PRESET_FILE" "$STARSHIP_CURRENT"
+# Switching is explicit, so replacing the active Starship config is expected;
+# nevertheless, preserve a custom file or external symlink before the first
+# switch. Symlinks already pointing into our preset directory need no backup.
+BACKUP_ACTIVE=0
+if [[ -e "$STARSHIP_ACTIVE" || -L "$STARSHIP_ACTIVE" ]]; then
+  if [[ -L "$STARSHIP_ACTIVE" ]]; then
+    case "$(readlink "$STARSHIP_ACTIVE")" in
+      "$STARSHIP_PRESETS"/*) ;;
+      *) BACKUP_ACTIVE=1 ;;
+    esac
+  else
+    BACKUP_ACTIVE=1
+  fi
+fi
+
+if [[ "$BACKUP_ACTIVE" == "1" ]]; then
+  mkdir -p "$BACKUP_ROOT"
+  BACKUP_FILE="$BACKUP_ROOT/starship.toml.$(date +%Y%m%d-%H%M%S)"
+  cp -pL "$STARSHIP_ACTIVE" "$BACKUP_FILE"
+  printf 'Backed up custom Starship config: %s\n' "$BACKUP_FILE"
+fi
+
+ln -sfn "$PRESET_FILE" "$STARSHIP_ACTIVE"
 
 TMP_APPEARANCE="$(mktemp "$GHOSTTY_DIR/.appearance.XXXXXX")"
 cat > "$TMP_APPEARANCE" <<EOF
