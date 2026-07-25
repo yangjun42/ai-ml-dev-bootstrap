@@ -94,13 +94,18 @@ grep -Fq '# >>> ai-ml-dev-bootstrap:macos-developer >>>' config/macos/zsh/develo
 grep -Fq '/opt/homebrew/bin/brew shellenv' config/macos/zsh/minimal.zsh
 grep -Fq '! $+functions[compdef]' config/macos/zsh/minimal.zsh
 grep -Fq 'typeset -U path PATH' config/macos/zsh/developer.zsh
-grep -Fq 'STARSHIP_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/starship/current.toml"' config/macos/zsh/developer.zsh
+if grep -Fq 'export STARSHIP_CONFIG=' config/macos/zsh/developer.zsh; then
+  echo "developer.zsh must let existing and managed Starship init use the official default config path" >&2
+  exit 1
+fi
 grep -Fq '! $+functions[__zoxide_z]' config/macos/zsh/developer.zsh
 grep -Fq '! $+widgets[fzf-history-widget]' config/macos/zsh/developer.zsh
 grep -Fq 'STARSHIP_SHELL' config/macos/zsh/developer.zsh
 grep -Fq '! $+functions[_zsh_autosuggest_start]' config/macos/zsh/developer.zsh
 grep -Fq '! $+functions[_zsh_highlight]' config/macos/zsh/developer.zsh
 grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/developer.zsh
+grep -Fq 'local active="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"' scripts/configure-macos-shell.sh
+grep -Fq 'STARSHIP_ACTIVE="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"' config/macos/bin/devtheme
 
 # Bootstrap behaviour and profile aliases.
 grep -Fq 'PROFILE="minimal"' scripts/bootstrap-macos.sh
