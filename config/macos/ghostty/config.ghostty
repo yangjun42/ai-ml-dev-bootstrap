@@ -44,6 +44,7 @@ auto-update = check
 auto-update-channel = stable
 
 # appearance.ghostty is installed once and may be changed by `devtheme`.
-# local.ghostty is never created or modified by the bootstrap.
-config-file = appearance.ghostty
+# Both includes are optional so an accidentally removed override cannot prevent
+# the rest of the terminal baseline from loading.
+config-file = ?appearance.ghostty
 config-file = ?local.ghostty
