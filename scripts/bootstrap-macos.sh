@@ -4,6 +4,8 @@ set -euo pipefail
 PROFILE="minimal"
 DRY_RUN=0
 UPGRADE=0
+SKIP_CONFIG=0
+FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
@@ -11,11 +13,11 @@ usage() {
 Usage: ./scripts/bootstrap-macos.sh [options]
 
 Profiles:
-  minimal      Default. Core personal Mac setup for AI/software development.
+  minimal      Default host, AI apps, Ghostty, and reliable zsh baseline.
   core         Alias for minimal.
-  developer    minimal + common CLI developer utilities.
+  developer    minimal + Starship, zoxide, fuzzy search, and common CLI tools.
   workstation  developer + native build and Docker-compatible tooling.
-  restricted   Host-only setup without public AI apps or Ollama.
+  restricted   Host/shell setup without public AI apps or Ollama.
 
 Compatibility aliases:
   personal     Alias for minimal.
@@ -24,10 +26,12 @@ Compatibility aliases:
 Options:
   --profile NAME  Select a profile. Default: minimal.
   --upgrade       Update Homebrew metadata and allow package upgrades.
-  --dry-run       Print the selected Brewfiles without installing anything.
+  --skip-config   Install packages only; do not manage Ghostty/zsh files.
+  --force-config  Back up and replace an unmanaged Ghostty main config.
+  --dry-run       Print packages and configuration actions without changing them.
   -h, --help      Show this help.
 
-This host bootstrap intentionally does not install Python, PyTorch, MLX,
+The host bootstrap intentionally does not install Python, PyTorch, MLX,
 Miniforge, VS Code extensions, model weights, or project environments.
 EOF
 }
@@ -41,6 +45,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --upgrade)
       UPGRADE=1
+      shift
+      ;;
+    --skip-config)
+      SKIP_CONFIG=1
+      shift
+      ;;
+    --force-config)
+      FORCE_CONFIG=1
       shift
       ;;
     --dry-run)
@@ -96,7 +108,7 @@ ensure_command_line_tools() {
 
   log "Apple Command Line Tools are required for the system Git and developer SDKs."
   xcode-select --install >/dev/null 2>&1 || true
-  echo "Complete the macOS installer dialog, then re-run this command." >&2
+  echo "Complete the macOS installer dialog, then rerun this command." >&2
   exit 2
 }
 
@@ -128,17 +140,21 @@ ensure_homebrew() {
 
   if ! command -v brew >/dev/null 2>&1; then
     echo "Homebrew was installed but is not available in this shell." >&2
-    echo "Follow the shellenv instructions printed by the Homebrew installer, then re-run." >&2
+    echo "Follow the shellenv instructions printed by the Homebrew installer, then rerun." >&2
     exit 1
   fi
 }
 
+bundle_is_satisfied() {
+  local file="$1"
+  HOMEBREW_NO_AUTO_UPDATE=1 \
+  HOMEBREW_BUNDLE_NO_UPGRADE=1 \
+    brew bundle check --file="$file" >/dev/null 2>&1
+}
+
 bundle_file() {
   local file="$1"
-  if [[ ! -f "$file" ]]; then
-    echo "Missing Brewfile: $file" >&2
-    exit 1
-  fi
+  [[ -f "$file" ]] || { echo "Missing Brewfile: $file" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
     log "would apply $file"
@@ -146,21 +162,32 @@ bundle_file() {
     return
   fi
 
-  local args=(bundle "--file=$file")
-  if [[ "$UPGRADE" != "1" ]]; then
-    args+=(--no-upgrade)
+  if [[ "$UPGRADE" != "1" ]] && bundle_is_satisfied "$file"; then
+    log "already satisfied: $(basename "$file")"
+    return
   fi
 
   log "applying $(basename "$file")"
   if [[ "$UPGRADE" == "1" ]]; then
-    brew "${args[@]}"
+    brew bundle --file="$file"
   else
-    HOMEBREW_NO_AUTO_UPDATE=1 brew "${args[@]}"
+    HOMEBREW_NO_AUTO_UPDATE=1 \
+    HOMEBREW_BUNDLE_NO_UPGRADE=1 \
+      brew bundle --file="$file" --no-upgrade
+  fi
+
+  if ! bundle_is_satisfied "$file"; then
+    echo "Brewfile is still not fully satisfied: $file" >&2
+    exit 1
   fi
 }
 
 ensure_command_line_tools
 ensure_homebrew
+
+if [[ "$UPGRADE" == "1" && "$DRY_RUN" != "1" ]]; then
+  brew update
+fi
 
 BREWFILES=("$REPO_ROOT/brewfiles/macos/minimal.Brewfile")
 case "$PROFILE" in
@@ -186,6 +213,15 @@ for file in "${BREWFILES[@]}"; do
   bundle_file "$file"
 done
 
+if [[ "$SKIP_CONFIG" != "1" ]]; then
+  CONFIG_ARGS=(--profile "$PROFILE")
+  [[ "$DRY_RUN" == "1" ]] && CONFIG_ARGS+=(--dry-run)
+  [[ "$FORCE_CONFIG" == "1" ]] && CONFIG_ARGS+=(--force-config)
+  bash "$REPO_ROOT/scripts/configure-macos-shell.sh" "${CONFIG_ARGS[@]}"
+else
+  log "skipping Ghostty/zsh configuration by request"
+fi
+
 if [[ "$DRY_RUN" == "1" ]]; then
   log "dry run complete"
   exit 0
@@ -206,15 +242,19 @@ printf '  tmux: %s\n' "$(tmux -V 2>/dev/null || echo 'not found')"
 printf '  gh: %s\n' "$(gh --version 2>/dev/null | head -n 1 || echo 'not found')"
 printf '  git-lfs: %s\n' "$(git-lfs --version 2>/dev/null || echo 'not found')"
 printf '  btop: %s\n' "$(btop --version 2>/dev/null | head -n 1 || echo 'not found')"
+if command -v starship >/dev/null 2>&1; then
+  printf '  starship: %s\n' "$(starship --version 2>/dev/null | head -n 1)"
+  printf '  zoxide: %s\n' "$(zoxide --version 2>/dev/null || echo 'not found')"
+fi
 
 cat <<'EOF'
 
 Not performed by design:
   - no VS Code extensions
-  - no account login or credential setup
+  - no account login, API key, or SSH key setup
   - no Ollama model downloads or background-service changes
   - no Python installation, virtual environment, or AI/ML project dependencies
-  - no shell-framework or dotfile changes
+  - no Oh My Zsh or replacement of unmarked personal dotfiles
 EOF
 
 if [[ "$PROFILE" == "restricted" ]]; then
@@ -223,10 +263,21 @@ if [[ "$PROFILE" == "restricted" ]]; then
 Restricted profile complete. Public AI apps and Ollama were intentionally not installed.
 Use organization-approved applications, mirrors, and model runtimes as required.
 EOF
+elif [[ "$PROFILE" == "developer" || "$PROFILE" == "workstation" ]]; then
+  cat <<'EOF'
+
+The developer terminal experience is ready:
+  - Ghostty TokyoNight Moon/Day
+  - Starship Jetpack
+  - zoxide, fzf, autosuggestions, and syntax highlighting
+  - optional coordinated switching with: devtheme list
+
+Restart Ghostty so its explicit zsh login command and all settings take effect.
+EOF
 else
   cat <<'EOF'
 
 Open ChatGPT to use ChatGPT/Codex, open Ollama once before using the CLI,
-and let each project declare its own environment with uv when needed.
+and restart Ghostty to load the managed zsh baseline.
 EOF
 fi
