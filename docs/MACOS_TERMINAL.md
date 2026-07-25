@@ -26,7 +26,7 @@ then safely applies:
 
 - `~/.config/ghostty/config.ghostty`;
 - `~/.config/ghostty/appearance.ghostty` when it does not already exist;
-- one marked history/completion block in `~/.zshrc`;
+- one marked Homebrew/history/completion block in `~/.zshrc`;
 - `~/.zsh_history` with user-only permissions.
 
 The managed Ghostty baseline provides:
@@ -39,11 +39,13 @@ The managed Ghostty baseline provides:
 - conservative clipboard read and paste protection;
 - left Option as terminal Alt while right Option retains macOS character input;
 - stable-channel update notifications (`check`, not silent installation);
-- an optional `local.ghostty` override that the bootstrap never creates or
-  modifies.
+- optional `appearance.ghostty` and `local.ghostty` includes, so an accidentally
+  removed override does not stop the baseline from loading.
 
-The minimal zsh block persists and shares history across active shells, enables
-native zsh completion, and does not install a shell framework or prompt theme.
+The minimal zsh block restores Homebrew's standard shell environment when it
+is not already present, persists and shares history across active shells, and
+enables native zsh completion. It does not install a prompt framework or
+aliases.
 
 ## Developer behaviour
 
@@ -69,19 +71,23 @@ zsh-autosuggestions
 zsh-syntax-highlighting
 ```
 
-Syntax highlighting is deliberately the final interactive integration because
-it hooks into zsh's line editor after the other widgets have been registered.
+Runtime guards prevent a pre-existing unmarked `.zshrc` from initializing the
+same tool twice. Syntax highlighting is deliberately the final interactive
+integration because it hooks into zsh's line editor after the other widgets
+have been registered.
 
-On a fresh machine the configurator generates the current Starship Jetpack
-preset and selects it through:
+On a fresh machine the configurator generates Jetpack and selects it at
+Starship's official default active path:
 
 ```text
 ~/.config/starship/presets/jetpack.toml
-~/.config/starship/current.toml -> presets/jetpack.toml
+~/.config/starship.toml -> ~/.config/starship/presets/jetpack.toml
 ```
 
-If `~/.config/starship.toml` already exists, it is preserved and selected
-instead. Re-running the bootstrap does not reset the active preset.
+If `~/.config/starship.toml` already exists, it is preserved. This is important
+for an established `.zshrc` that already runs `starship init zsh`: both the
+existing line and the managed line now resolve the same active file. Re-running
+the bootstrap does not reset the active preset.
 
 ## Coordinated theme switching
 
@@ -104,11 +110,18 @@ Generate a preset again from a newer Starship installation:
 devtheme --refresh tokyo
 ```
 
-The command changes only:
+The command changes:
 
 ```text
 ~/.config/ghostty/appearance.ghostty
-~/.config/starship/current.toml
+~/.config/starship.toml
+```
+
+If the active Starship config is a custom file or an external symlink,
+`devtheme` first copies it to:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/starship.toml.<timestamp>
 ```
 
 After changing a theme, press `Cmd+Shift+,` in Ghostty to reload the terminal
@@ -154,6 +167,8 @@ The bootstrap is designed to be rerun:
   choices survive reruns;
 - only marked blocks in `.zshrc` are replaced; unmarked personal content is
   retained;
+- an existing Starship active config is preserved by bootstrap;
+- an explicit `devtheme` switch backs up a custom Starship config first;
 - backups are stored under
   `~/.config/ai-ml-dev-bootstrap/backups/`.
 
@@ -222,7 +237,7 @@ Inspect the active configurations:
 ```bash
 ghostty +show-config | grep -E '^(theme|command|shell-integration|auto-update)'
 devtheme current
-ls -l ~/.config/starship/current.toml
+ls -l ~/.config/starship.toml
 ```
 
 Starship controls the prompt; zsh controls command history; Ghostty scrollback
