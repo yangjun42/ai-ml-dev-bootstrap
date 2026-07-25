@@ -2,6 +2,16 @@
 # Managed by ai-ml-dev-bootstrap. Personal shell configuration may live above
 # or below this block; rerunning the bootstrap updates only managed blocks.
 
+# Homebrew's installer may not yet be persisted in PATH on a fresh Apple
+# Silicon Mac. Load the standard installation only when brew is still absent.
+if (( ! $+commands[brew] )); then
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+fi
+
 # Persist and share command history across Ghostty windows, tabs, and panes.
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000
