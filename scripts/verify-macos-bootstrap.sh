@@ -26,7 +26,6 @@ required_minimal=(
   'cask "chatgpt"'
   'cask "claude-code"'
   'cask "ollama-app"'
-  'cask "rectangle"'
 )
 
 for entry in "${required_minimal[@]}"; do
@@ -38,8 +37,13 @@ if grep -Eq '^brew "git"$' brewfiles/macos/minimal.Brewfile; then
   exit 1
 fi
 
-if grep -Eq '^(brew|cask) "(python(@[^\"]*)?|miniforge|pixi|colima|docker|docker-compose)"$' brewfiles/macos/minimal.Brewfile; then
-  echo "minimal.Brewfile unexpectedly contains project/runtime or workstation dependencies" >&2
+if grep -Eq '^(brew|cask) "(python(@[^\"]*)?|miniforge|pixi|colima|docker|docker-compose|rectangle)"$' brewfiles/macos/minimal.Brewfile; then
+  echo "minimal.Brewfile unexpectedly contains project/runtime, workstation, or window-manager dependencies" >&2
+  exit 1
+fi
+
+if grep -Eq '^cask "rectangle"$' brewfiles/macos/restricted.Brewfile; then
+  echo "restricted.Brewfile must use macOS native window tiling" >&2
   exit 1
 fi
 

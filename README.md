@@ -28,10 +28,9 @@ Claude Code CLI
 Ollama App
 uv
 btop
-Rectangle
 ```
 
-Git 和 OpenSSH 由 macOS / Apple Command Line Tools 提供，脚本只验证，不通过 Homebrew 重复安装。
+Git 和 OpenSSH 由 macOS / Apple Command Line Tools 提供，脚本只验证，不通过 Homebrew 重复安装。窗口平铺使用 macOS 原生功能，不默认安装第三方窗口管理器。
 
 ### 安装
 
