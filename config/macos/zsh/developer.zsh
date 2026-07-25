@@ -7,9 +7,9 @@
 typeset -U path PATH
 path=("$HOME/.local/bin" $path)
 
-export STARSHIP_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/starship/current.toml"
-
 # Fast directory jumping, fuzzy history/file search, and the Starship prompt.
+# Starship deliberately uses its official default ~/.config/starship.toml path,
+# so existing manual `starship init zsh` lines and the managed init agree.
 # The guards make adoption safe when an existing unmarked .zshrc already loads
 # one or more of the same tools.
 if (( $+commands[zoxide] && ! $+functions[__zoxide_z] )); then
