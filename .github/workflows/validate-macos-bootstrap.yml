@@ -4,9 +4,14 @@ on:
   pull_request:
     paths:
       - "brewfiles/macos/**"
+      - "config/macos/**"
       - "scripts/bootstrap-macos*.sh"
+      - "scripts/configure-macos-shell.sh"
+      - "scripts/test-macos-configure.sh"
       - "scripts/verify-macos-bootstrap.sh"
       - "docs/MACOS_PROFILES.md"
+      - "docs/MACOS_TERMINAL.md"
+      - "docs/ARCHITECTURE.md"
       - "README.md"
       - "Makefile"
       - ".github/workflows/validate-macos-bootstrap.yml"
@@ -14,9 +19,14 @@ on:
     branches: [main]
     paths:
       - "brewfiles/macos/**"
+      - "config/macos/**"
       - "scripts/bootstrap-macos*.sh"
+      - "scripts/configure-macos-shell.sh"
+      - "scripts/test-macos-configure.sh"
       - "scripts/verify-macos-bootstrap.sh"
       - "docs/MACOS_PROFILES.md"
+      - "docs/MACOS_TERMINAL.md"
+      - "docs/ARCHITECTURE.md"
       - "README.md"
       - "Makefile"
       - ".github/workflows/validate-macos-bootstrap.yml"
@@ -29,5 +39,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate scripts and profile manifests
+      - name: Validate scripts, manifests, and config idempotence
         run: bash scripts/verify-macos-bootstrap.sh
