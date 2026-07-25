@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Managed by ai-ml-dev-bootstrap.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: devtheme [--refresh] NAME
+
+Profiles:
+  tokyo          TokyoNight Moon/Day + Starship Jetpack (default)
+  tokyo-night    TokyoNight Moon/Day + Starship Tokyo Night
+  catppuccin     Catppuccin Mocha/Latte + Catppuccin Powerline
+  gruvbox        Gruvbox Dark/Light Hard + Gruvbox Rainbow
+  current        Show the active Ghostty theme and Starship preset
+  list           List available profiles
+
+--refresh regenerates the selected Starship preset from the installed version.
+After switching, press Cmd+Shift+, in Ghostty to reload its configuration.
+EOF
+}
+
+REFRESH=0
+if [[ "${1:-}" == "--refresh" ]]; then
+  REFRESH=1
+  shift
+fi
+
+PROFILE="${1:-current}"
+GHOSTTY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
+GHOSTTY_APPEARANCE="$GHOSTTY_DIR/appearance.ghostty"
+STARSHIP_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/starship"
+STARSHIP_PRESETS="$STARSHIP_DIR/presets"
+STARSHIP_CURRENT="$STARSHIP_DIR/current.toml"
+
+case "$PROFILE" in
+  list)
+    printf '%s\n' tokyo tokyo-night catppuccin gruvbox
+    exit 0
+    ;;
+  current)
+    if [[ -f "$GHOSTTY_APPEARANCE" ]]; then
+      grep -E '^theme[[:space:]]*=' "$GHOSTTY_APPEARANCE" || true
+    else
+      echo "Ghostty theme: not configured"
+    fi
+    if [[ -L "$STARSHIP_CURRENT" ]]; then
+      echo "Starship: $(basename "$(readlink "$STARSHIP_CURRENT")" .toml)"
+    elif [[ -f "$STARSHIP_CURRENT" ]]; then
+      echo "Starship: custom current.toml"
+    else
+      echo "Starship: not configured"
+    fi
+    exit 0
+    ;;
+  tokyo|default)
+    GHOSTTY_THEME='dark:TokyoNight Moon,light:TokyoNight Day'
+    STARSHIP_PRESET='jetpack'
+    ;;
+  tokyo-night)
+    GHOSTTY_THEME='dark:TokyoNight Moon,light:TokyoNight Day'
+    STARSHIP_PRESET='tokyo-night'
+    ;;
+  catppuccin)
+    GHOSTTY_THEME='dark:Catppuccin Mocha,light:Catppuccin Latte'
+    STARSHIP_PRESET='catppuccin-powerline'
+    ;;
+  gruvbox)
+    GHOSTTY_THEME='dark:Gruvbox Dark Hard,light:Gruvbox Light Hard'
+    STARSHIP_PRESET='gruvbox-rainbow'
+    ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "Unknown theme profile: $PROFILE" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if ! command -v starship >/dev/null 2>&1; then
+  echo "starship is required. Install the macOS developer profile first." >&2
+  exit 1
+fi
+
+mkdir -p "$GHOSTTY_DIR" "$STARSHIP_PRESETS"
+PRESET_FILE="$STARSHIP_PRESETS/$STARSHIP_PRESET.toml"
+
+if [[ "$REFRESH" == "1" || ! -s "$PRESET_FILE" ]]; then
+  starship preset "$STARSHIP_PRESET" -o "$PRESET_FILE"
+fi
+
+ln -sfn "$PRESET_FILE" "$STARSHIP_CURRENT"
+
+TMP_APPEARANCE="$(mktemp "$GHOSTTY_DIR/.appearance.XXXXXX")"
+cat > "$TMP_APPEARANCE" <<EOF
+# Selected by devtheme. Run devtheme current to inspect the active pairing.
+theme = $GHOSTTY_THEME
+EOF
+mv "$TMP_APPEARANCE" "$GHOSTTY_APPEARANCE"
+
+printf 'Ghostty : %s\n' "$GHOSTTY_THEME"
+printf 'Starship: %s\n' "$STARSHIP_PRESET"
+printf 'Reload Ghostty with Cmd+Shift+,; a new prompt uses the Starship preset.\n'
