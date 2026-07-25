@@ -2,8 +2,12 @@
 # Managed by ai-ml-dev-bootstrap. Keep this block after other interactive zsh
 # integrations so syntax highlighting can register last.
 
-export PATH="$HOME/.local/bin:$PATH"
-export STARSHIP_CONFIG="$HOME/.config/starship/current.toml"
+# zsh exposes PATH as the `path` array. Make it unique before prepending the
+# per-user command directory so nested shells do not accumulate duplicates.
+typeset -U path PATH
+path=("$HOME/.local/bin" $path)
+
+export STARSHIP_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/starship/current.toml"
 
 # Fast directory jumping, fuzzy history/file search, and the Starship prompt.
 # The guards make adoption safe when an existing unmarked .zshrc already loads
