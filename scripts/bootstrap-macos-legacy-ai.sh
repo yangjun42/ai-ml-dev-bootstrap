@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Legacy project-environment bootstrap retained for compatibility.
-# New Mac hosts should use scripts/bootstrap-macos.sh and let each project
-# declare Python/AI dependencies with uv.
+# Compatibility wrapper for the former macOS profile/feature interface.
 set -euo pipefail
 
 PROFILE="personal"
 FEATURES="core,ai,conda"
 PYTHON_VERSION="3.12"
+PROJECT_DIR="$HOME/projects/ai-ml-starter"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
@@ -14,103 +13,53 @@ while [[ $# -gt 0 ]]; do
     --profile) PROFILE="$2"; shift 2 ;;
     --features) FEATURES="$2"; shift 2 ;;
     --python) PYTHON_VERSION="$2"; shift 2 ;;
-    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    --project-dir) PROJECT_DIR="$2"; shift 2 ;;
+    -h|--help)
+      cat <<'EOF'
+Compatibility wrapper. Prefer scripts/bootstrap-macos.sh directly.
+
+Legacy options:
+  --profile personal|enterprise
+  --features core,ai,conda,mlsys,containers
+  --python VERSION
+  --project-dir PATH
+EOF
+      exit 0
+      ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-has_feature() {
-  [[ ",$FEATURES," == *",$1,"* || ",$FEATURES," == *",all,"* ]]
-}
+case "$PROFILE" in
+  personal) NEW_PROFILE="core" ;;
+  enterprise) NEW_PROFILE="restricted" ;;
+  *) echo "Legacy profile must be personal or enterprise" >&2; exit 2 ;;
+esac
 
-if [[ "$PROFILE" != "personal" && "$PROFILE" != "enterprise" ]]; then
-  echo "PROFILE must be personal or enterprise" >&2
-  exit 1
-fi
+NEW_FEATURES=""
+OLD_IFS="$IFS"
+IFS=','
+for feature in $FEATURES; do
+  case "$feature" in
+    core|minimal|developer) ;;
+    ai|conda|mlsys|containers|build)
+      NEW_FEATURES="${NEW_FEATURES:+$NEW_FEATURES,}$feature"
+      ;;
+    all)
+      NEW_FEATURES="ai,conda,mlsys,build,containers"
+      ;;
+    *) echo "Unknown legacy feature: $feature" >&2; exit 2 ;;
+  esac
+done
+IFS="$OLD_IFS"
 
-echo "[bootstrap-macos-legacy-ai] profile=${PROFILE} features=${FEATURES} repo=${REPO_ROOT}"
-echo "[bootstrap-macos-legacy-ai] WARNING: legacy full AI/Python bootstrap; prefer scripts/bootstrap-macos.sh for new Macs." >&2
+echo "[bootstrap-macos-legacy-ai] forwarding to the modular macOS bootstrap" >&2
 
-if ! command -v brew >/dev/null 2>&1; then
-  echo "Homebrew is required. Install from https://brew.sh and re-run." >&2
-  exit 1
-fi
+ARGS=(
+  --profile "$NEW_PROFILE"
+  --python "$PYTHON_VERSION"
+  --project-dir "$PROJECT_DIR"
+)
+[[ -n "$NEW_FEATURES" ]] && ARGS+=(--features "$NEW_FEATURES")
 
-if has_feature core; then
-  brew update
-  brew install git git-lfs uv jq wget cmake ninja pkg-config ffmpeg htop || true
-  brew install --cask vscodium || true
-  git lfs install || true
-fi
-
-uv python install "$PYTHON_VERSION"
-mkdir -p "$HOME/projects" "$HOME/data" "$HOME/models" "$HOME/mlruns"
-
-mkdir -p "$HOME/.config/ai-ml-dev-bootstrap"
-cp "$REPO_ROOT/profiles/${PROFILE}.env" "$HOME/.config/ai-ml-dev-bootstrap/profile.env"
-if ! grep -q 'ai-ml-dev-bootstrap/profile.env' "$HOME/.zshrc" 2>/dev/null; then
-  cat >> "$HOME/.zshrc" <<'EOF'
-
-# ai-ml-dev-bootstrap profile
-if [ -f "$HOME/.config/ai-ml-dev-bootstrap/profile.env" ]; then
-  . "$HOME/.config/ai-ml-dev-bootstrap/profile.env"
-fi
-EOF
-fi
-# shellcheck disable=SC1090
-source "$HOME/.config/ai-ml-dev-bootstrap/profile.env"
-
-if has_feature conda; then
-  bash "$REPO_ROOT/scripts/install-miniforge.sh" "$HOME/miniforge3"
-  # shellcheck disable=SC1091
-  source "$HOME/miniforge3/etc/profile.d/conda.sh"
-  if [ -f "$HOME/miniforge3/etc/profile.d/mamba.sh" ]; then
-    # shellcheck disable=SC1091
-    source "$HOME/miniforge3/etc/profile.d/mamba.sh"
-  fi
-  AI_NATIVE_PREFIX="$HOME/miniforge3/envs/ai-native"
-  if [ -f "$AI_NATIVE_PREFIX/conda-meta/history" ]; then
-    mamba env update -p "$AI_NATIVE_PREFIX" -f "$REPO_ROOT/envs/ai-native.yml" --prune
-  else
-    if [ -e "$AI_NATIVE_PREFIX" ]; then
-      BACKUP_PREFIX="${AI_NATIVE_PREFIX}.incomplete-$(date +%Y%m%d-%H%M%S)"
-      echo "[bootstrap] Found incomplete conda/mamba environment directory: $AI_NATIVE_PREFIX" >&2
-      echo "[bootstrap] Moving it aside to: $BACKUP_PREFIX" >&2
-      mv "$AI_NATIVE_PREFIX" "$BACKUP_PREFIX"
-    fi
-    mamba create -p "$AI_NATIVE_PREFIX" -f "$REPO_ROOT/envs/ai-native.yml"
-  fi
-fi
-
-if has_feature ai; then
-  TARGET="$HOME/projects/ai-ml-starter"
-  mkdir -p "$TARGET"
-  rsync -a --delete --exclude '.venv' "$REPO_ROOT/templates/ai-starter/" "$TARGET/"
-  cd "$TARGET"
-  uv venv --python "$PYTHON_VERSION"
-  uv pip install -r requirements/base.txt -r requirements/llm.txt -r requirements/dev.txt
-  uv pip install torch torchvision torchaudio
-
-  if [[ "$(uname -m)" == "arm64" ]]; then
-    uv pip install -r requirements/macos-apple-silicon.txt || true
-  fi
-
-  if has_feature mlsys; then
-    uv pip install -r requirements/mlsys.txt
-  fi
-
-  if [[ "$PROFILE" == "personal" ]]; then
-    uv pip install -r requirements/personal.txt
-  else
-    uv pip install -r requirements/enterprise.txt
-  fi
-
-  uv run python scripts/check_env.py || true
-fi
-
-if has_feature containers; then
-  brew install podman docker docker-compose || true
-  brew install --cask podman-desktop rancher || true
-fi
-
-echo "[bootstrap-macos-legacy-ai] done"
-echo "Next: cd ~/projects/ai-ml-starter && uv run jupyter lab"
+exec bash "$REPO_ROOT/scripts/bootstrap-macos.sh" "${ARGS[@]}"
