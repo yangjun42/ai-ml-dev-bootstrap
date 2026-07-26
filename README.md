@@ -6,7 +6,7 @@ Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 
 - **主机与项目分离**：装机脚本只管理通用软件和主机配置。
 - **uv-first**：Python、虚拟环境、框架和依赖由各项目自行声明。
-- **少量正交概念**：macOS 只有两个 profile 和两个可选 feature。
+- **少量正交概念**：macOS 只有两个 profile 和三个可选 feature。
 - **安全重复执行**：已满足的软件跳过，个人未托管配置不静默覆盖。
 
 > 本仓库不替代组织的安全、合规和许可证审查。
@@ -25,18 +25,19 @@ cd ai-ml-dev-bootstrap
 ./scripts/bootstrap-macos.sh
 ```
 
-企业或受限设备：
+企业设备：
 
 ```bash
 ./scripts/bootstrap-macos.sh --profile enterprise
 ```
 
-需要额外主机能力时：
+按需增加主机能力：
 
 ```bash
 ./scripts/bootstrap-macos.sh --features ml
+./scripts/bootstrap-macos.sh --features mlsys
 ./scripts/bootstrap-macos.sh --features containers
-./scripts/bootstrap-macos.sh --features ml,containers
+./scripts/bootstrap-macos.sh --features ml,mlsys,containers
 ```
 
 全新 Mac 尚未安装 Apple Command Line Tools 时，脚本会请求安装；也可以预先执行：
@@ -64,19 +65,22 @@ project  = 自己管理 Python/ML 环境
 
 | feature | 内容 |
 |---|---|
-| `ml` | CMake、Ninja、pkgconf、FFmpeg、hyperfine；不创建 Python 环境 |
+| `ml` | `llama.cpp`、FFmpeg；面向本地模型运行和多媒体数据处理 |
+| `mlsys` | CMake、Ninja、pkgconf、hyperfine；面向编译、系统与性能工程 |
 | `containers` | Colima、Docker CLI、Docker Compose；不自动启动 Colima |
-| `all` | `ml,containers` |
+| `all` | `ml,mlsys,containers` |
+
+三者都不会安装 Python、创建虚拟环境或安装 PyTorch/MLX 等框架。
 
 旧 profile 名称仅作为迁移别名：
 
 ```text
 minimal, developer, personal -> core
 restricted                  -> enterprise
-workstation                 -> core + ml,containers
+workstation                 -> core + mlsys,containers
 ```
 
-旧 `ai`、`conda`、`mlsys`、`build` feature 已移除。Mac 主机 bootstrap 不再创建 starter project，也不安装 Miniforge。
+旧 `ai`、`conda`、`build` feature 已移除。Mac 主机 bootstrap 不再创建 starter project，也不安装 Miniforge。`mlsys` 保留为独立能力，不与 `ml` 混用。
 
 ### `core` 包含什么
 
@@ -226,6 +230,7 @@ brewfiles/macos/
   core.Brewfile
   personal.Brewfile
   ml.Brewfile
+  mlsys.Brewfile
   containers.Brewfile
 
 config/macos/
