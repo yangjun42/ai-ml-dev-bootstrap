@@ -2,11 +2,12 @@
 # Put personal or machine-specific overrides in local.ghostty instead of
 # editing this file; optional config files are loaded after this baseline.
 
-# Explicitly launching zsh keeps the setup working for directory-managed macOS
-# accounts whose login shell remains /bin/bash, without changing the account-
-# wide login shell.
-command = /bin/zsh -l
-shell-integration = zsh
+# Ghostty normally starts the login shell recorded by macOS. Modern personal
+# Macs generally use zsh, so no explicit command is needed. If a managed or
+# directory-backed account still opens /bin/bash and therefore never reads
+# ~/.zshrc, uncomment the following line:
+# command = /bin/zsh -l
+shell-integration = detect
 shell-integration-features = ssh-env,ssh-terminfo
 
 # Appearance. The actual colour theme lives in appearance.ghostty so `devtheme`
