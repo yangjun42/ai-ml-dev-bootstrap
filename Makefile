@@ -1,28 +1,39 @@
-.PHONY: mac-minimal mac-core mac-developer mac-workstation mac-restricted mac-personal mac-enterprise mac-config-minimal mac-config-developer verify verify-macos verify-project docker-cpu docker-gpu
+.PHONY: mac-core mac-restricted mac-ai mac-conda mac-mlsys mac-build mac-containers mac-all mac-config mac-minimal mac-developer mac-workstation mac-personal mac-enterprise verify verify-macos verify-project docker-cpu docker-gpu
 
-mac-minimal:
-	./scripts/bootstrap-macos.sh --profile minimal
-
-mac-core: mac-minimal
-
-mac-developer:
-	./scripts/bootstrap-macos.sh --profile developer
-
-mac-workstation:
-	./scripts/bootstrap-macos.sh --profile workstation
+mac-core:
+	./scripts/bootstrap-macos.sh
 
 mac-restricted:
 	./scripts/bootstrap-macos.sh --profile restricted
 
-# Apply only managed Ghostty/zsh configuration, without Homebrew installs.
-mac-config-minimal:
-	bash ./scripts/configure-macos-shell.sh --profile minimal
+mac-ai:
+	./scripts/bootstrap-macos.sh --features ai
 
-mac-config-developer:
-	bash ./scripts/configure-macos-shell.sh --profile developer
+mac-conda:
+	./scripts/bootstrap-macos.sh --features conda
 
-# Backward-compatible aliases.
-mac-personal: mac-minimal
+mac-mlsys:
+	./scripts/bootstrap-macos.sh --features mlsys
+
+mac-build:
+	./scripts/bootstrap-macos.sh --features build
+
+mac-containers:
+	./scripts/bootstrap-macos.sh --features containers
+
+mac-all:
+	./scripts/bootstrap-macos.sh --features all
+
+# Apply only managed Ghostty/zsh/Starship configuration.
+mac-config:
+	bash ./scripts/configure-macos-shell.sh --profile core
+
+# Backward-compatible aliases from the previous profile design.
+mac-minimal mac-developer mac-personal: mac-core
+
+mac-workstation:
+	./scripts/bootstrap-macos.sh --features build,containers
+
 mac-enterprise: mac-restricted
 
 verify: verify-macos
