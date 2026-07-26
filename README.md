@@ -89,13 +89,13 @@ Starship      : Jetpack
 Shell         : macOS 登录 shell（现代 Mac 通常为 zsh）
 ```
 
-Ghostty 配置中保留了这行提示，但默认注释：
+Ghostty 配置中保留了这行提示，但新安装默认注释：
 
 ```ini
 # command = /bin/zsh -l
 ```
 
-只有在目录服务或企业账户仍启动 Bash、导致 `~/.zshrc` 不加载时，才取消注释。
+只有在目录服务或企业账户仍启动 Bash、导致 `~/.zshrc` 不加载时才需要启用。迁移时如果旧 Ghostty 配置已经启用了这一行，新配置会自动保留该选择。
 
 ### `ai`
 
@@ -170,7 +170,7 @@ devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 
 行为如下：
 
-1. `brew bundle check` 跳过已经安装的内容，只补齐 core 缺少的软件。
+1. `brew bundle check` 跳过已经安装的内容，只补齐 core 和 AI feature 缺少的软件。
 2. 默认不升级已安装软件；只有 `--upgrade` 才升级。
 3. Ghostty 主配置首次被 core 接管时备份为：
 
@@ -184,10 +184,23 @@ devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
    ~/.config/ai-ml-dev-bootstrap/backups/zshrc.original
    ```
 
-5. 如果 Ghostty 的 macOS Application Support 路径还有第二份配置，它会先备份为 `ghostty-macos-config.original`，再移除该重复来源。
-6. 现有 `~/.config/starship.toml` 保留，不会被 bootstrap 覆盖。
-7. 现有 `appearance.ghostty` 保留，因此你当前 TokyoNight 选择不会被重置。
-8. 第二次及以后运行不会再创建同类备份，也不会叠加 zsh 初始化区块。
+5. Ghostty 其余三个可能覆盖主配置的旧路径会分别一次性备份后移除：
+
+   ```text
+   ~/.config/ghostty/config
+     -> ghostty-xdg-legacy-config.original
+
+   ~/Library/Application Support/com.mitchellh.ghostty/config.ghostty
+     -> ghostty-macos-config.original
+
+   ~/Library/Application Support/com.mitchellh.ghostty/config
+     -> ghostty-macos-legacy-config.original
+   ```
+
+6. 旧配置若已启用 `command = /bin/zsh -l`，迁移后继续启用；全新安装仍默认注释。
+7. 现有 `~/.config/starship.toml` 保留，不会被 bootstrap 覆盖。
+8. 现有 `appearance.ghostty` 保留，因此当前 TokyoNight 选择不会被重置。
+9. 第二次及以后运行不会再创建同类备份，也不会叠加 zsh 初始化区块。
 
 Repo 完整管理：
 
@@ -245,6 +258,7 @@ uv add numpy pandas scikit-learn
 - 默认使用 `--no-upgrade`；
 - 对已有主配置只保留固定名称的一次性 `.original` 备份；
 - 使用一个 repo 管理的 `.zshrc`，避免新旧初始化逻辑同时存在；
+- 清理 Ghostty 的其他加载路径，避免后加载文件暗中覆盖；
 - 保留 Starship 活动配置、Ghostty appearance 以及两个 `local.*` override；
 - 重复执行时不产生额外备份、不重置主题、不创建 Python 环境。
 
@@ -285,7 +299,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 make verify-macos
 ```
 
-macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、一次性迁移、重复执行、主题切换和配置来源唯一性。
+macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、一次性迁移、全部 Ghostty 配置路径、重复执行、主题切换和配置来源唯一性。
 
 ## 目录结构
 
