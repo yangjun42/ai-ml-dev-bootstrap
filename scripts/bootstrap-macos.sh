@@ -6,7 +6,7 @@ DRY_RUN=0
 UPGRADE=0
 SKIP_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FEATURES=()
+FEATURES=""
 
 usage() {
   cat <<'EOF'
@@ -38,22 +38,26 @@ log() {
   printf '[bootstrap-macos] %s\n' "$*"
 }
 
+# A comma-delimited string is intentionally used instead of a Bash array.
+# macOS still ships Bash 3.2, where expanding an empty array under `set -u`
+# raises an "unbound variable" error.
 append_feature() {
   local candidate="$1"
-  local existing
-  for existing in "${FEATURES[@]}"; do
-    [[ "$existing" == "$candidate" ]] && return 0
-  done
-  FEATURES+=("$candidate")
+
+  case ",${FEATURES}," in
+    *",${candidate},"*) return 0 ;;
+  esac
+
+  FEATURES="${FEATURES:+${FEATURES},}${candidate}"
 }
 
 feature_enabled() {
   local needle="$1"
-  local existing
-  for existing in "${FEATURES[@]}"; do
-    [[ "$existing" == "$needle" ]] && return 0
-  done
-  return 1
+
+  case ",${FEATURES}," in
+    *",${needle},"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 parse_feature_list() {
@@ -86,14 +90,7 @@ parse_feature_list() {
 }
 
 feature_summary() {
-  if [[ "${#FEATURES[@]}" -eq 0 ]]; then
-    printf 'none'
-  else
-    local old_ifs="$IFS"
-    IFS=','
-    printf '%s' "${FEATURES[*]}"
-    IFS="$old_ifs"
-  fi
+  printf '%s' "${FEATURES:-none}"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -238,9 +235,11 @@ for file in "${BREWFILES[@]}"; do
 done
 
 if [[ "$SKIP_CONFIG" != "1" ]]; then
-  CONFIG_ARGS=()
-  [[ "$DRY_RUN" == "1" ]] && CONFIG_ARGS+=(--dry-run)
-  bash "$REPO_ROOT/scripts/configure-macos-shell.sh" "${CONFIG_ARGS[@]}"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    bash "$REPO_ROOT/scripts/configure-macos-shell.sh" --dry-run
+  else
+    bash "$REPO_ROOT/scripts/configure-macos-shell.sh"
+  fi
 else
   log "skipping Ghostty/zsh configuration by request"
 fi
