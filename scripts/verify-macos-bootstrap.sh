@@ -151,6 +151,11 @@ grep -Fq 'bundle_is_satisfied' scripts/bootstrap-macos.sh
 grep -Fq 'configure-macos-shell.sh' scripts/bootstrap-macos.sh
 grep -Fq 'no Python installation or virtual environment' scripts/bootstrap-macos.sh
 
+if grep -Fq 'FEATURES[@]' scripts/bootstrap-macos.sh; then
+  echo "macOS feature parsing must not expand an empty Bash array under set -u" >&2
+  exit 1
+fi
+
 if grep -Eq -- '--profile|PROFILE=|--force-config|setup-macos-ai|install-miniforge|uv python install|uv pip install|llama\.cpp|ffmpeg' scripts/bootstrap-macos.sh; then
   echo "macOS bootstrap contains a removed profile, force, or environment/runtime path" >&2
   exit 1
@@ -173,6 +178,49 @@ with path.open("rb") as handle:
 assert data["project"]["dependencies"] == []
 assert data["tool"]["uv"]["package"] is False
 PY
+
+# Exercise the public CLI with features under `set -u`. On the macOS runner this
+# uses Apple's Bash 3.2 and catches empty-array expansion regressions.
+CLI_TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ai-ml-macos-cli.XXXXXX")"
+trap 'rm -rf "$CLI_TEST_ROOT"' EXIT
+CLI_FAKE_BIN="$CLI_TEST_ROOT/bin"
+CLI_HOME="$CLI_TEST_ROOT/home"
+mkdir -p "$CLI_FAKE_BIN" "$CLI_HOME"
+
+cat > "$CLI_FAKE_BIN/uname" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-s" ]]; then
+  echo Darwin
+else
+  /usr/bin/uname "$@"
+fi
+EOF
+
+cat > "$CLI_FAKE_BIN/xcode-select" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+
+cat > "$CLI_FAKE_BIN/brew" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--prefix" ]]; then
+  echo /opt/homebrew
+fi
+exit 0
+EOF
+
+chmod +x "$CLI_FAKE_BIN/uname" "$CLI_FAKE_BIN/xcode-select" "$CLI_FAKE_BIN/brew"
+
+cli_ai_output="$(HOME="$CLI_HOME" PATH="$CLI_FAKE_BIN:$PATH" \
+  bash scripts/bootstrap-macos.sh --features ai --dry-run)"
+printf '%s\n' "$cli_ai_output" | grep -Fq 'features=ai'
+printf '%s\n' "$cli_ai_output" | grep -Fq 'ai.Brewfile'
+
+cli_all_output="$(HOME="$CLI_HOME" PATH="$CLI_FAKE_BIN:$PATH" \
+  bash scripts/bootstrap-macos.sh --features all --dry-run)"
+printf '%s\n' "$cli_all_output" | grep -Fq 'features=ai,mlsys,containers'
+printf '%s\n' "$cli_all_output" | grep -Fq 'mlsys.Brewfile'
+printf '%s\n' "$cli_all_output" | grep -Fq 'containers.Brewfile'
 
 bash scripts/test-macos-configure.sh
 
