@@ -105,7 +105,12 @@ if grep -Eq '^(brew|cask) "(llama\.cpp|ffmpeg)"$' brewfiles/macos/ai.Brewfile; t
 fi
 
 # Ghostty and unified zsh invariants.
-grep -Fq 'command = /bin/zsh -l' config/macos/ghostty/config.ghostty
+grep -Fq '# command = /bin/zsh -l' config/macos/ghostty/config.ghostty
+grep -Fq 'shell-integration = detect' config/macos/ghostty/config.ghostty
+if grep -Eq '^[[:space:]]*command[[:space:]]*=' config/macos/ghostty/config.ghostty; then
+  echo "Ghostty must not force an explicit shell by default" >&2
+  exit 1
+fi
 grep -Fq 'shell-integration-features = ssh-env,ssh-terminfo' config/macos/ghostty/config.ghostty
 grep -Fq 'auto-update = check' config/macos/ghostty/config.ghostty
 grep -Fq 'auto-update-channel = stable' config/macos/ghostty/config.ghostty
@@ -117,6 +122,12 @@ grep -Fq 'zoxide init zsh' config/macos/zsh/core.zsh
 grep -Fq 'fzf --zsh' config/macos/zsh/core.zsh
 grep -Fq 'starship init zsh' config/macos/zsh/core.zsh
 grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/core.zsh
+
+# Adoption is one-time and old repository-owned zsh blocks migrate cleanly.
+grep -Fq 'backup_once()' scripts/configure-macos-shell.sh
+grep -Fq 'macos-minimal' scripts/configure-macos-shell.sh
+grep -Fq 'macos-developer' scripts/configure-macos-shell.sh
+grep -Fq 'preserved externally managed symlink' scripts/configure-macos-shell.sh
 
 # Public interface: one core plus three orthogonal features.
 grep -Fq 'ai|mlsys|containers' scripts/bootstrap-macos.sh
