@@ -2,15 +2,15 @@
 # Put personal or machine-specific overrides in local.ghostty instead of
 # editing this file; optional config files are loaded after this baseline.
 
-# The profile is intentionally zsh-based. Explicitly launching zsh keeps the
-# setup working for directory-managed macOS accounts whose login shell remains
-# /bin/bash, without changing the account-wide login shell.
+# Explicitly launching zsh keeps the setup working for directory-managed macOS
+# accounts whose login shell remains /bin/bash, without changing the account-
+# wide login shell.
 command = /bin/zsh -l
 shell-integration = zsh
 shell-integration-features = ssh-env,ssh-terminfo
 
-# Appearance. The actual colour theme lives in appearance.ghostty so the
-# developer profile can switch it without rewriting terminal behaviour.
+# Appearance. The actual colour theme lives in appearance.ghostty so `devtheme`
+# can switch it without rewriting terminal behaviour.
 font-size = 14
 minimum-contrast = 1.1
 window-padding-x = 8
