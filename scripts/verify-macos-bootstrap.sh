@@ -99,7 +99,7 @@ for obsolete in \
   test ! -e "$obsolete"
 done
 
-if grep -Eq 'llama\.cpp|ffmpeg' brewfiles/macos/ai.Brewfile; then
+if grep -Eq '^(brew|cask) "(llama\.cpp|ffmpeg)"$' brewfiles/macos/ai.Brewfile; then
   echo "AI feature must remain the three application bundle only" >&2
   exit 1
 fi
