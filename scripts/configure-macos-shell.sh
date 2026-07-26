@@ -135,6 +135,7 @@ has_explicit_zsh_command() {
 
 remove_duplicate_ghostty_config() {
   local duplicate="$1"
+  local backup_name="$2"
 
   [[ -e "$duplicate" || -L "$duplicate" ]] || return 0
 
@@ -148,7 +149,7 @@ remove_duplicate_ghostty_config() {
     exit 1
   fi
 
-  backup_once "$duplicate" "ghostty-macos-config"
+  backup_once "$duplicate" "$backup_name"
   rm -f "$duplicate"
   log "removed duplicate Ghostty config path: $duplicate"
 }
@@ -157,15 +158,22 @@ configure_ghostty() {
   local config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
   local ghostty_dir="$config_root/ghostty"
   local target="$ghostty_dir/config.ghostty"
+  local xdg_legacy="$ghostty_dir/config"
   local template="$REPO_ROOT/config/macos/ghostty/config.ghostty"
   local appearance="$ghostty_dir/appearance.ghostty"
-  local duplicate="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+  local macos_dir="$HOME/Library/Application Support/com.mitchellh.ghostty"
+  local macos_config="$macos_dir/config.ghostty"
+  local macos_legacy="$macos_dir/config"
   local rendered
   local preserve_explicit_zsh=0
+  local candidate
 
-  if has_explicit_zsh_command "$target" || has_explicit_zsh_command "$duplicate"; then
-    preserve_explicit_zsh=1
-  fi
+  for candidate in "$target" "$xdg_legacy" "$macos_config" "$macos_legacy"; do
+    if has_explicit_zsh_command "$candidate"; then
+      preserve_explicit_zsh=1
+      break
+    fi
+  done
 
   rendered="$(mktemp "${TMPDIR:-/tmp}/ai-ml-ghostty.XXXXXX")"
   if [[ "$preserve_explicit_zsh" == "1" ]]; then
@@ -177,7 +185,10 @@ configure_ghostty() {
   install_managed_file "$rendered" "$target"
   rm -f "$rendered"
   install_if_missing "$REPO_ROOT/config/macos/ghostty/appearance.ghostty" "$appearance"
-  remove_duplicate_ghostty_config "$duplicate"
+
+  remove_duplicate_ghostty_config "$xdg_legacy" "ghostty-xdg-legacy-config"
+  remove_duplicate_ghostty_config "$macos_config" "ghostty-macos-config"
+  remove_duplicate_ghostty_config "$macos_legacy" "ghostty-macos-legacy-config"
 
   if [[ "$preserve_explicit_zsh" == "1" ]]; then
     log "preserved existing opt-in Ghostty zsh command"
