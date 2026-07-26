@@ -10,12 +10,14 @@ usage() {
 Usage: ./scripts/configure-macos-shell.sh [options]
 
 Options:
-  --force-config  Back up and replace an unmanaged Ghostty main config.
+  --force-config  Replace a symlinked Ghostty main config after one-time backup.
   --dry-run       Print intended changes without writing files.
   -h, --help      Show this help.
 
 Installs one reliable Ghostty, zsh, Starship, navigation, and interactive-shell
-configuration. It modifies only repository-managed files or marked zsh blocks.
+configuration. Existing regular Ghostty configs are adopted after one one-time
+backup; symlinked configs remain externally owned unless --force-config is used.
+Only repository-marked zsh blocks are replaced.
 EOF
 }
 
@@ -51,15 +53,26 @@ log() {
 }
 
 BACKUP_ROOT="$HOME/.config/ai-ml-dev-bootstrap/backups"
-TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
-backup_file() {
+backup_once() {
   local source="$1"
   local name="$2"
+  local destination="$BACKUP_ROOT/${name}.original"
+
   [[ -e "$source" || -L "$source" ]] || return 0
+
+  if [[ -e "$destination" || -L "$destination" ]]; then
+    log "one-time backup already exists: $destination"
+    return 0
+  fi
+
   mkdir -p "$BACKUP_ROOT"
-  cp -pL "$source" "$BACKUP_ROOT/${name}.${TIMESTAMP}"
-  log "backup: $BACKUP_ROOT/${name}.${TIMESTAMP}"
+  if [[ -L "$source" && ! -e "$source" ]]; then
+    printf 'broken symlink -> %s\n' "$(readlink "$source")" > "$destination"
+  else
+    cp -pL "$source" "$destination"
+  fi
+  log "one-time backup: $destination"
 }
 
 install_managed_file() {
@@ -79,32 +92,31 @@ install_managed_file() {
 
   if [[ ! -e "$target" && ! -L "$target" ]]; then
     install -m "$mode" "$source" "$target"
+    rm -f "$candidate"
     log "installed: $target"
     return
   fi
 
-  if cmp -s "$source" "$target"; then
+  if cmp -s "$source" "$target" 2>/dev/null; then
+    rm -f "$candidate"
     log "already current: $target"
     return
   fi
 
   if [[ -L "$target" && "$FORCE_CONFIG" != "1" ]]; then
-    install -m "$mode" "$source" "$candidate"
-    log "preserved symlinked config: $target"
+    if ! cmp -s "$source" "$candidate" 2>/dev/null; then
+      install -m "$mode" "$source" "$candidate"
+    fi
+    log "preserved externally managed symlink: $target"
     log "review candidate: $candidate"
     return
   fi
 
-  if grep -Fq 'Managed by ai-ml-dev-bootstrap' "$target" 2>/dev/null || [[ "$FORCE_CONFIG" == "1" ]]; then
-    backup_file "$target" "$(basename "$target")"
-    install -m "$mode" "$source" "$target"
-    log "updated: $target"
-    return
-  fi
-
-  install -m "$mode" "$source" "$candidate"
-  log "preserved unmanaged config: $target"
-  log "review candidate or rerun with --force-config: $candidate"
+  backup_once "$target" "$(basename "$target")"
+  [[ -L "$target" ]] && rm -f "$target"
+  install -m "$mode" "$source" "$target"
+  rm -f "$candidate"
+  log "adopted managed file: $target"
 }
 
 install_if_missing() {
@@ -130,6 +142,20 @@ marker_count() {
   grep -Fc "$2" "$1" 2>/dev/null || true
 }
 
+validate_managed_markers() {
+  local file="$1"
+  local name starts ends
+
+  for name in macos-core macos-minimal macos-developer; do
+    starts="$(marker_count "$file" "# >>> ai-ml-dev-bootstrap:${name} >>>")"
+    ends="$(marker_count "$file" "# <<< ai-ml-dev-bootstrap:${name} <<<")"
+    if [[ "$starts" != "$ends" ]]; then
+      echo "Malformed ai-ml-dev-bootstrap block markers in $file: $name" >&2
+      exit 1
+    fi
+  done
+}
+
 configure_zshrc() {
   local zshrc="$HOME/.zshrc"
   local template="$REPO_ROOT/config/macos/zsh/core.zsh"
@@ -138,28 +164,27 @@ configure_zshrc() {
   [[ -f "$template" ]] || { echo "Missing zsh template: $template" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would merge core zsh block into: $zshrc"
+    log "would merge one core zsh block into: $zshrc"
     return
   fi
 
   [[ -s "$zshrc" || -L "$zshrc" ]] && had_content=1
   touch "$zshrc"
-
-  local starts ends
-  starts="$(marker_count "$zshrc" '# >>> ai-ml-dev-bootstrap:macos-core >>>')"
-  ends="$(marker_count "$zshrc" '# <<< ai-ml-dev-bootstrap:macos-core <<<')"
-  if [[ "$starts" != "$ends" ]]; then
-    echo "Malformed ai-ml-dev-bootstrap block markers in $zshrc" >&2
-    exit 1
-  fi
+  validate_managed_markers "$zshrc"
 
   local stripped tmp
   stripped="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc-stripped.XXXXXX")"
   tmp="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc.XXXXXX")"
 
+  # Remove the current block and the two repository-managed blocks from the
+  # earlier minimal/developer design. Unmarked user content is never deleted.
   awk '
     $0 == "# >>> ai-ml-dev-bootstrap:macos-core >>>" { skip = 1; next }
     $0 == "# <<< ai-ml-dev-bootstrap:macos-core <<<" { skip = 0; next }
+    $0 == "# >>> ai-ml-dev-bootstrap:macos-minimal >>>" { skip = 1; next }
+    $0 == "# <<< ai-ml-dev-bootstrap:macos-minimal <<<" { skip = 0; next }
+    $0 == "# >>> ai-ml-dev-bootstrap:macos-developer >>>" { skip = 1; next }
+    $0 == "# <<< ai-ml-dev-bootstrap:macos-developer <<<" { skip = 0; next }
     !skip { print }
   ' "$zshrc" > "$stripped"
 
@@ -182,7 +207,7 @@ configure_zshrc() {
     rm -f "$tmp"
     log "already current: $zshrc"
   else
-    [[ "$had_content" == "1" ]] && backup_file "$zshrc" "zshrc"
+    [[ "$had_content" == "1" ]] && backup_once "$zshrc" "zshrc"
     cat "$tmp" > "$zshrc"
     rm -f "$tmp"
     log "updated managed block: $zshrc"
