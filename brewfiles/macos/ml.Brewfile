@@ -1,9 +1,6 @@
-# Optional host-side ML engineering tools.
-# This feature does not install Python, create a virtual environment, or add a
-# framework such as PyTorch/MLX. Projects remain responsible for those choices.
+# Optional model-facing tools for local ML work.
+# Ollama remains the default runtime in the personal core profile; this feature
+# adds lower-level control without creating a Python environment.
 
-brew "cmake"
-brew "ninja"
-brew "pkgconf"
+brew "llama.cpp"
 brew "ffmpeg"
-brew "hyperfine"
