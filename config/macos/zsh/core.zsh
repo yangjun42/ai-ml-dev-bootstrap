@@ -1,6 +1,7 @@
-# >>> ai-ml-dev-bootstrap:macos-core >>>
-# Managed by ai-ml-dev-bootstrap. Personal shell configuration may live above
-# or below this block; rerunning the bootstrap updates only this marked block.
+# Managed by ai-ml-dev-bootstrap.
+# Put personal or machine-specific additions in:
+#   ~/.config/zsh/local.zsh
+# That optional file is loaded before the final interactive typing helpers.
 
 # Make a fresh Homebrew installation available in new zsh sessions.
 if (( ! $+commands[brew] )); then
@@ -15,7 +16,7 @@ fi
 typeset -U path PATH
 path=("$HOME/.local/bin" $path)
 
-# Persist and share command history across Ghostty windows, tabs, and panes.
+# Persist and share command history across terminal windows, tabs, and panes.
 HISTFILE="$HOME/.zsh_history"
 HISTSIZE=50000
 SAVEHIST=50000
@@ -27,16 +28,14 @@ setopt HIST_REDUCE_BLANKS
 setopt HIST_FIND_NO_DUPS
 setopt HIST_SAVE_NO_DUPS
 
-# Native zsh completion. Avoid reinitializing it when existing dotfiles already
-# loaded compinit before this managed block.
+# Native zsh completion.
 if (( ! $+functions[compdef] )); then
   autoload -Uz compinit
   compinit
 fi
 zstyle ':completion:*' menu select
 
-# Prompt, navigation, and fuzzy search. Guards make adoption safe when existing
-# unmarked dotfiles already initialize one of these tools.
+# Prompt, navigation, and fuzzy search.
 if (( $+commands[zoxide] && ! $+functions[__zoxide_z] )); then
   eval "$(zoxide init zsh)"
 fi
@@ -49,8 +48,14 @@ if (( $+commands[starship] )) && [[ "${STARSHIP_SHELL:-}" != "zsh" ]]; then
   eval "$(starship init zsh)"
 fi
 
+# Personal additions load before the final ZLE integrations so syntax
+# highlighting can remain last.
+AI_ML_ZSH_LOCAL="${XDG_CONFIG_HOME:-$HOME/.config}/zsh/local.zsh"
+[[ -r "$AI_ML_ZSH_LOCAL" ]] && source "$AI_ML_ZSH_LOCAL"
+unset AI_ML_ZSH_LOCAL
+
 # Homebrew-installed typing helpers. Syntax highlighting intentionally loads
-# after the other ZLE integrations.
+# after all other line-editor integrations.
 if (( $+commands[brew] )); then
   AI_ML_BREW_PREFIX="$(brew --prefix)"
 
@@ -66,4 +71,3 @@ if (( $+commands[brew] )); then
 
   unset AI_ML_BREW_PREFIX
 fi
-# <<< ai-ml-dev-bootstrap:macos-core <<<
