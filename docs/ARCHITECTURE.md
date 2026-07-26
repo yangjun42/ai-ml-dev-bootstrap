@@ -1,72 +1,90 @@
 # Architecture notes
 
-## Design goals
+## Design model
 
-The repository favors a small number of concepts:
+The repository uses three concepts:
 
 ```text
 profile  = policy
-feature  = optional capability
-project  = owns its language and ML dependencies
+feature  = optional host capability
+project  = owns language and ML dependencies
 ```
 
-This avoids duplicated installation tiers and keeps modules composable,
-idempotent, and independently testable.
+This is intentionally smaller than a ladder of almost-identical machine tiers.
+Modules stay composable, idempotent, and independently testable.
 
-## Tool ownership
+## Ownership boundaries
 
-1. **OS/package bootstrap**
-   - macOS: Homebrew Bundle; Apple Command Line Tools provide Git/OpenSSH.
-   - Windows host: WinGet, with WSL2 Ubuntu preferred for Linux-oriented AI work.
-2. **Terminal and host configuration**
-   - Ghostty and one marked zsh block are managed by the macOS configurator.
-   - Unmarked dotfile content and machine-local overrides remain user-owned.
-3. **Python projects**
-   - uv owns Python versions, `.venv`, PyPI dependencies, and lockfiles.
-   - The macOS host bootstrap installs uv but creates a project only when the
-     `ai` or `mlsys` feature is selected.
-4. **Conda/native compatibility**
-   - Miniforge is installed only by the `conda` feature.
-   - mamba is the preferred conda-compatible CLI.
-5. **Containers and native build tools**
-   - Explicit `build` and `containers` features; neither is a core prerequisite.
-6. **Local model runtime**
-   - The personal `core` profile installs Ollama App without downloading models.
-   - Direct MLX/MLX-LM development remains project-scoped.
+### Host bootstrap
 
-## macOS model
+The host bootstrap owns:
+
+- operating-system package managers;
+- general development applications and CLIs;
+- terminal and shell configuration;
+- explicitly selected native/container host tools.
+
+On macOS, Homebrew Bundle manages packages while Apple Command Line Tools
+provide Git, OpenSSH, compilers, and SDKs.
+
+### Project
+
+Each repository owns:
+
+- Python version constraints;
+- `.venv` and dependency lockfiles;
+- PyTorch, MLX, JAX, TensorFlow, Jupyter, and other frameworks;
+- profiling/runtime packages tied to that project;
+- model and dataset choices.
+
+uv is installed by the host and is the default project tool, but the host does
+not create an environment or starter project.
+
+### User and organization
+
+The bootstrap does not own:
+
+- logins, API keys, SSH keys, or secrets;
+- VS Code extensions;
+- enterprise allowlists, mirrors, firewall rules, or license review;
+- unmarked personal dotfile content.
+
+## macOS policy profiles
 
 Only two policy profiles are exposed:
 
 ```text
 core        complete personal developer host, including AI applications
-restricted  same open-source host/terminal baseline, omitting public AI apps
+enterprise  same open-source terminal/editor baseline without public AI apps
 ```
 
-Capabilities are orthogonal:
+They share `core.Brewfile`. The `core` profile additionally applies
+`personal.Brewfile`, which contains ChatGPT, Claude Code, and Ollama.
+
+The policy difference is therefore small and explicit. Terminal quality does
+not degrade on an enterprise-managed machine.
+
+## macOS features
+
+Only two optional capabilities remain:
 
 ```text
-ai          local uv AI/ML starter project
-conda       Miniforge + mamba compatibility layer
-mlsys       AI feature + profiling/benchmark/runtime tools
-build       native build tools
-containers  Colima + Docker-compatible CLI tools
+ml          native build, media preprocessing, and benchmark host tools
+containers  Colima and Docker-compatible CLI tooling
 ```
 
-`mlsys` implies `ai`, because profiling packages extend the same project rather
-than creating a second overlapping Python environment.
+`ml` contains CMake, Ninja, pkgconf, FFmpeg, and hyperfine. It does not install
+Python or a framework. `containers` installs tooling but does not start a VM or
+service.
 
-The previous `minimal`, `developer`, and `workstation` names remain compatibility
-aliases only. They are not separate architecture layers.
+The previous Mac `ai`, `conda`, `mlsys`, and `build` features mixed host and
+project responsibilities. They were removed rather than merged into another
+automatic environment installer.
 
-## Why core includes the polished terminal stack
+## Why core includes the terminal productivity stack
 
-For this repository's target user, Starship, zoxide, fzf, autosuggestions,
-syntax highlighting, and basic repository CLIs are small, mainstream daily-use
-tools. Splitting them into a second profile produced two nearly identical host
-states and made onboarding less predictable. They now form one tested core.
-
-The core terminal configuration is deliberately framework-free:
+For the target user, these are small mainstream daily-use tools rather than a
+separate machine class:
 
 ```text
 Ghostty
@@ -76,7 +94,12 @@ zoxide
 fzf
 zsh-autosuggestions
 zsh-syntax-highlighting
+ripgrep / fd / jq / yq / bat / ShellCheck / just
 ```
+
+Splitting them between minimal and developer profiles created two nearly
+identical hosts and made onboarding less predictable. One tested core is easier
+to understand and maintain.
 
 Oh My Zsh, Powerlevel10k, and terminal file managers remain personal choices.
 
@@ -89,8 +112,8 @@ The macOS configurator follows these rules:
 - `appearance.ghostty`: install only when absent;
 - `local.ghostty`: never create or modify;
 - `.zshrc`: replace only one marked `macos-core` block;
-- previous managed blocks: migrate automatically;
-- Starship config: generate Jetpack only when no active config exists;
+- previous repository-managed blocks: migrate automatically;
+- Starship Jetpack: generate only when no active config exists;
 - explicit `devtheme` switch: back up custom Starship config first.
 
 ## Repeatability
@@ -98,30 +121,15 @@ The macOS configurator follows these rules:
 - `brew bundle check` provides the fast path for satisfied manifests.
 - Homebrew upgrades require explicit `--upgrade`.
 - Git LFS initialization is idempotent.
-- AI project setup refuses to populate a non-empty unrelated directory.
-- Optional features are independently selectable and may be composed.
+- Optional host features are independently selectable.
+- No Mac feature writes into an arbitrary project directory.
 - CI runs configuration tests on both Linux and macOS runners.
-
-## Why not uv-only everywhere?
-
-uv is the default for Python-first projects, but conda-forge remains useful for
-non-Python native stacks such as GDAL, HDF5, NetCDF, R, Qt, compiler variants,
-and legacy scientific binaries. This is why `conda` remains an optional feature
-rather than a core dependency.
 
 ## Windows model
 
-Windows remains separate because its platform constraints differ:
+Windows remains separate because its constraints differ:
 
 - preferred: Windows host + WSL2 Ubuntu for Linux/CUDA-oriented development;
 - fallback: native Windows when WSL is unavailable or blocked;
-- CUDA Toolkit, native compilers, containers, and MLsys tooling remain explicit
-  features rather than universal defaults.
-
-## Restricted profile
-
-`restricted` changes the application policy, not the terminal quality. It omits
-ChatGPT, Claude Code, and Ollama while retaining the open-source terminal/editor
-baseline. It is not a legal or technical compliance guarantee; internal
-mirrors, network controls, allowlists, and license review remain organizational
-responsibilities.
+- CUDA Toolkit, native compilers, conda compatibility, containers, and MLsys
+  tooling remain explicit where that platform workflow requires them.
