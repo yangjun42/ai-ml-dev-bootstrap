@@ -2,23 +2,83 @@
 
 Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 
-核心原则：
+设计原则：
 
-- **主机与项目分离**：装机脚本管理通用软件；Python/AI 依赖默认属于项目。
-- **uv-first**：Python 版本、虚拟环境、依赖和锁文件优先交给 uv。
-- **conda 按需**：Miniforge + mamba 只作为 conda-forge/native/旧环境兼容层。
-- **功能正交**：macOS 只有 `core` / `restricted` 两种策略，能力通过 feature 组合。
-- **安全重复执行**：已满足的安装项跳过，用户未托管配置不静默覆盖。
+- **主机与项目分离**：装机脚本只管理通用软件和主机配置。
+- **uv-first**：Python、虚拟环境、框架和依赖由各项目自行声明。
+- **少量正交概念**：macOS 只有两个 profile 和两个可选 feature。
+- **安全重复执行**：已满足的软件跳过，个人未托管配置不静默覆盖。
 
-> 本仓库不替代公司的安全、合规和许可证审查。
+> 本仓库不替代组织的安全、合规和许可证审查。
 
 ---
 
-## macOS：一个 `core`，按需加 feature
+## macOS
 
-### 默认 `core`
+### 最简单的用法
 
-适合个人 Apple Silicon Mac、远程服务器为主、本地轻量开发和开源模型运行：
+个人 Apple Silicon Mac：
+
+```bash
+git clone https://github.com/yangjun42/ai-ml-dev-bootstrap.git
+cd ai-ml-dev-bootstrap
+./scripts/bootstrap-macos.sh
+```
+
+企业或受限设备：
+
+```bash
+./scripts/bootstrap-macos.sh --profile enterprise
+```
+
+需要额外主机能力时：
+
+```bash
+./scripts/bootstrap-macos.sh --features ml
+./scripts/bootstrap-macos.sh --features containers
+./scripts/bootstrap-macos.sh --features ml,containers
+```
+
+全新 Mac 尚未安装 Apple Command Line Tools 时，脚本会请求安装；也可以预先执行：
+
+```bash
+xcode-select --install
+```
+
+### 模型
+
+```text
+profile  = 应用策略
+feature  = 可选主机能力
+project  = 自己管理 Python/ML 环境
+```
+
+正式 profile 只有：
+
+| profile | 用途 |
+|---|---|
+| `core` | 默认个人开发主机，包含 ChatGPT/Codex、Claude Code 和 Ollama |
+| `enterprise` | 相同的开源终端/编辑器基线，但不安装上述公共 AI 应用和本地模型运行时 |
+
+正式 feature 只有：
+
+| feature | 内容 |
+|---|---|
+| `ml` | CMake、Ninja、pkgconf、FFmpeg、hyperfine；不创建 Python 环境 |
+| `containers` | Colima、Docker CLI、Docker Compose；不自动启动 Colima |
+| `all` | `ml,containers` |
+
+旧 profile 名称仅作为迁移别名：
+
+```text
+minimal, developer, personal -> core
+restricted                  -> enterprise
+workstation                 -> core + ml,containers
+```
+
+旧 `ai`、`conda`、`mlsys`、`build` feature 已移除。Mac 主机 bootstrap 不再创建 starter project，也不安装 Miniforge。
+
+### `core` 包含什么
 
 ```text
 Homebrew + Brewfile
@@ -34,7 +94,7 @@ ripgrep + fd + jq + yq + bat + ShellCheck + just
 zsh-autosuggestions + zsh-syntax-highlighting
 ```
 
-Git 与 OpenSSH 使用 macOS / Apple Command Line Tools 版本，不通过 Homebrew 重复安装。
+Git 与 OpenSSH 使用 macOS / Apple Command Line Tools 提供的版本，不通过 Homebrew 重复安装。
 
 默认终端体验：
 
@@ -45,67 +105,9 @@ Starship      : Jetpack
 Shell         : /bin/zsh -l
 ```
 
-安装：
-
-```bash
-git clone https://github.com/yangjun42/ai-ml-dev-bootstrap.git
-cd ai-ml-dev-bootstrap
-./scripts/bootstrap-macos.sh
-```
-
-全新 Mac 尚未安装 Apple Command Line Tools 时，脚本会请求安装；也可以先执行：
-
-```bash
-xcode-select --install
-```
-
-### `restricted`
-
-使用相同的开源终端、编辑器、仓库和 shell 基线，但不自动安装：
-
-```text
-ChatGPT
-Claude Code
-Ollama
-```
-
-```bash
-./scripts/bootstrap-macos.sh --profile restricted
-```
-
-### 可选 features
-
-```text
-ai          创建/复用一个 uv 管理的本地 AI/ML starter project
-conda       安装 Miniforge（含 conda 与 mamba）
-mlsys       加入 profiling/benchmark/runtime 工具；自动启用 ai
-build       CMake、Ninja、pkgconf、FFmpeg
-containers  Colima、Docker CLI、Docker Compose；不会自动启动
-all         启用全部 feature
-```
-
-示例：
-
-```bash
-./scripts/bootstrap-macos.sh --features ai
-./scripts/bootstrap-macos.sh --features conda
-./scripts/bootstrap-macos.sh --features ai,mlsys
-./scripts/bootstrap-macos.sh --features build,containers
-./scripts/bootstrap-macos.sh --features all
-```
-
-AI project 可指定路径与 Python：
-
-```bash
-./scripts/bootstrap-macos.sh \
-  --features ai,mlsys \
-  --python 3.12 \
-  --project-dir "$HOME/projects/ai-ml-starter"
-```
+Ghostty 显式启动 zsh，因此目录服务账户即使仍记录 `/bin/bash`，也能正确读取 `~/.zshrc`。
 
 ### 主题切换
-
-`core` 会安装：
 
 ```bash
 devtheme list
@@ -119,16 +121,46 @@ devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 
 切换后在 Ghostty 中按 `Cmd+Shift+,` 重新加载。
 
+### Python / ML 项目
+
+装机脚本不会自动执行以下操作：
+
+```text
+安装 Python
+创建 .venv 或 starter project
+安装 PyTorch、MLX、Jupyter、Transformers
+安装 Miniforge / conda / mamba
+下载 Ollama 模型
+安装 VS Code 插件
+```
+
+项目自己管理环境：
+
+```bash
+cd project
+uv sync
+```
+
+没有现成项目时：
+
+```bash
+uv init --python 3.12 my-project
+cd my-project
+uv add numpy pandas scikit-learn
+```
+
+需要 PyTorch、MLX 或其他框架时，仅在该项目中添加。
+
 ### 安全与幂等
 
 ```bash
-# 只查看计划
+# 查看计划
 ./scripts/bootstrap-macos.sh --dry-run
 
-# 允许升级已有 Homebrew 软件
+# 显式允许升级 Homebrew 软件
 ./scripts/bootstrap-macos.sh --upgrade
 
-# 只安装软件，不修改 Ghostty/zsh
+# 只装软件，不修改 Ghostty/zsh
 ./scripts/bootstrap-macos.sh --skip-config
 
 # 备份并采用仓库的 Ghostty 主配置
@@ -140,55 +172,21 @@ devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 
 脚本会：
 
-- 先运行 `brew bundle check`，已满足的 Brewfile 整体跳过；
+- 先运行 `brew bundle check`，已满足的 manifest 整体跳过；
 - 默认使用 `--no-upgrade`；
-- 只维护 `.zshrc` 中带 marker 的一个 `macos-core` block；
-- 迁移旧的 `macos-minimal` / `macos-developer` blocks；
+- 只维护 `.zshrc` 中带 marker 的 `macos-core` block；
+- 自动迁移旧的 `macos-minimal` / `macos-developer` blocks；
 - 保留未标记的个人配置；
-- 对托管配置先备份；
 - 不覆盖未托管或 symlink 的 Ghostty 配置，而是生成 review candidate；
 - 不在重复执行时重置主题或 Starship 选择。
 
 详细说明见 [`docs/MACOS.md`](docs/MACOS.md)。
 
-### 旧名称兼容
-
-旧名称仍可运行，但新设计只使用 `core` / `restricted`：
-
-```text
-minimal, developer, personal -> core
-workstation                  -> core + build,containers
-enterprise                   -> restricted
-```
-
 ---
 
-## uv 与 Miniforge/mamba
+## Windows 11
 
-```text
-uv        = Python 版本、项目环境、PyPI 依赖和锁文件的默认工具
-Miniforge = conda-forge 发行版/安装入口
-mamba     = conda-compatible 的快速环境与包管理 CLI
-```
-
-普通 Python/AI 项目优先：
-
-```bash
-cd project
-uv sync
-```
-
-需要 conda-forge native 依赖或兼容同事的 `environment.yml` 时：
-
-```bash
-./scripts/bootstrap-macos.sh --features conda
-source ~/miniforge3/etc/profile.d/conda.sh
-mamba env create -f environment.yml
-```
-
----
-
-## Windows 11：推荐 WSL2 Ubuntu
+推荐 WSL2 Ubuntu：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
@@ -219,24 +217,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 make verify-macos
 ```
 
-macOS CI 会在 Linux 与 macOS runner 上验证：
-
-```text
-shell syntax
-Brewfile/module invariants
-配置迁移
-重复执行幂等性
-主题切换
-用户配置保留
-```
-
-已有 starter project：
-
-```bash
-make verify-project
-```
-
----
+macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、旧配置迁移、重复执行、主题切换和用户配置保留。
 
 ## 目录结构
 
@@ -244,9 +225,8 @@ make verify-project
 brewfiles/macos/
   core.Brewfile
   personal.Brewfile
-  build.Brewfile
+  ml.Brewfile
   containers.Brewfile
-  mlsys.Brewfile
 
 config/macos/
   ghostty/config.ghostty
@@ -257,8 +237,6 @@ config/macos/
 scripts/
   bootstrap-macos.sh
   configure-macos-shell.sh
-  setup-macos-ai.sh
-  install-miniforge.sh
   bootstrap.ps1
   bootstrap-windows-native.ps1
   bootstrap-wsl.sh
