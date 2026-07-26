@@ -11,13 +11,13 @@ usage() {
 Usage: ./scripts/configure-macos-shell.sh [options]
 
 Options:
-  --profile core|restricted
+  --profile core|enterprise
   --force-config  Back up and replace an unmanaged Ghostty main config.
   --dry-run       Print intended changes without writing files.
   -h, --help      Show this help.
 
 Both profiles use the same reliable Ghostty, zsh, Starship, navigation, and
-interactive-shell baseline. The profile difference is package policy, not a
+interactive-shell baseline. The profile difference is application policy, not a
 second terminal configuration tier.
 EOF
 }
@@ -50,9 +50,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$PROFILE" in
-  core|restricted) ;;
+  core|enterprise) ;;
   minimal|developer|personal|workstation) PROFILE="core" ;;
-  enterprise) PROFILE="restricted" ;;
+  restricted) PROFILE="enterprise" ;;
   *) echo "Unknown macOS profile: $PROFILE" >&2; exit 2 ;;
 esac
 
