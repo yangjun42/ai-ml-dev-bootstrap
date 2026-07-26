@@ -22,14 +22,16 @@ Profiles:
               applications or the local Ollama runtime.
 
 Optional features (comma-separated):
-  ml          Host-side ML engineering tools: CMake, Ninja, pkgconf, FFmpeg,
+  ml          Model-facing local tools: llama.cpp and FFmpeg. Does not create a
+              Python environment or install a framework.
+  mlsys       Systems-facing build and benchmark tools: CMake, Ninja, pkgconf,
               and hyperfine. Does not create a Python environment.
   containers  Colima and Docker-compatible CLI tooling. Does not start Colima.
-  all         Enable ml and containers.
+  all         Enable ml, mlsys, and containers.
 
 Options:
   --profile NAME   core or enterprise. Default: core.
-  --features LIST  Example: ml,containers.
+  --features LIST  Example: ml,mlsys or mlsys,containers.
   --upgrade        Update Homebrew metadata and allow package upgrades.
   --skip-config    Install packages only; do not manage Ghostty/zsh files.
   --force-config   Back up and replace an unmanaged Ghostty main config.
@@ -39,7 +41,7 @@ Options:
 Compatibility profile aliases:
   minimal, developer, personal -> core
   restricted                  -> enterprise
-  workstation                 -> core + ml,containers
+  workstation                 -> core + mlsys,containers
 
 Python versions, virtual environments, ML frameworks, notebooks, and project
 packages are intentionally project-owned and should be managed with uv.
@@ -80,14 +82,15 @@ parse_feature_list() {
 
     case "$normalized" in
       core|minimal|developer) ;;
-      ml|containers) append_feature "$normalized" ;;
+      ml|mlsys|containers) append_feature "$normalized" ;;
       all)
         append_feature ml
+        append_feature mlsys
         append_feature containers
         ;;
-      ai|conda|mlsys|build)
+      ai|conda|build)
         echo "The macOS feature '$normalized' was removed." >&2
-        echo "Use --features ml for generic host tools; manage Python/ML environments per project with uv." >&2
+        echo "Use ml for model-facing tools, mlsys for systems/build tools, and uv inside each project." >&2
         exit 2
         ;;
       *)
@@ -162,7 +165,7 @@ case "$PROFILE" in
   restricted) PROFILE="enterprise" ;;
   workstation)
     PROFILE="core"
-    COMPAT_FEATURES="ml,containers"
+    COMPAT_FEATURES="mlsys,containers"
     ;;
   *)
     echo "Unknown macOS profile: $PROFILE" >&2
@@ -282,6 +285,7 @@ else
 fi
 
 feature_enabled ml && BREWFILES+=("$REPO_ROOT/brewfiles/macos/ml.Brewfile")
+feature_enabled mlsys && BREWFILES+=("$REPO_ROOT/brewfiles/macos/mlsys.Brewfile")
 feature_enabled containers && BREWFILES+=("$REPO_ROOT/brewfiles/macos/containers.Brewfile")
 
 log "profile=$PROFILE features=$(feature_summary) repo=$REPO_ROOT"
