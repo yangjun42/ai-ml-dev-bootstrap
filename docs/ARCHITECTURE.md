@@ -22,7 +22,7 @@ The host bootstrap owns:
 - operating-system package managers;
 - general development applications and CLIs;
 - terminal and shell configuration;
-- explicitly selected native/container host tools.
+- explicitly selected model-facing, systems-facing, or container host tools.
 
 On macOS, Homebrew Bundle manages packages while Apple Command Line Tools
 provide Git, OpenSSH, compilers, and SDKs.
@@ -34,7 +34,7 @@ Each repository owns:
 - Python version constraints;
 - `.venv` and dependency lockfiles;
 - PyTorch, MLX, JAX, TensorFlow, Jupyter, and other frameworks;
-- profiling/runtime packages tied to that project;
+- framework-specific profiling/runtime packages;
 - model and dataset choices.
 
 uv is installed by the host and is the default project tool, but the host does
@@ -66,20 +66,29 @@ not degrade on an enterprise-managed machine.
 
 ## macOS features
 
-Only two optional capabilities remain:
+Three optional host capabilities remain:
 
 ```text
-ml          native build, media preprocessing, and benchmark host tools
+ml          model-facing local inference and media tools
+mlsys       systems-facing build and benchmark tools
 containers  Colima and Docker-compatible CLI tooling
 ```
 
-`ml` contains CMake, Ninja, pkgconf, FFmpeg, and hyperfine. It does not install
-Python or a framework. `containers` installs tooling but does not start a VM or
-service.
+Their boundaries are intentional:
 
-The previous Mac `ai`, `conda`, `mlsys`, and `build` features mixed host and
-project responsibilities. They were removed rather than merged into another
-automatic environment installer.
+- `ml` contains `llama.cpp` and FFmpeg. It is for direct local model runtime
+  control and multimodal preprocessing beyond the default Ollama workflow.
+- `mlsys` contains CMake, Ninja, pkgconf, and hyperfine. It is for native builds
+  and repeatable systems/performance work.
+- `containers` installs Docker-compatible tooling without starting a VM or
+  service.
+
+`ml` and `mlsys` are independent. Neither implies the other, and neither
+installs Python or framework packages.
+
+The previous Mac `ai` and `conda` features mixed host and project
+responsibilities. They were removed rather than merged into another automatic
+environment installer. The previous `build` name is superseded by `mlsys`.
 
 ## Why core includes the terminal productivity stack
 
