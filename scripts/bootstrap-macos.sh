@@ -26,7 +26,7 @@ Options:
   --features LIST  Example: ai or ai,mlsys.
   --upgrade        Update Homebrew metadata and allow package upgrades.
   --skip-config    Install packages only; do not manage Ghostty/zsh files.
-  --force-config   Back up and replace an unmanaged Ghostty main config.
+  --force-config   Replace a symlinked Ghostty config after one-time backup.
   --dry-run        Print package and configuration actions without changing them.
   -h, --help       Show this help.
 
