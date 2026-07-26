@@ -1,0 +1,51 @@
+# Managed by ai-ml-dev-bootstrap.
+# Put personal or machine-specific overrides in local.ghostty instead of
+# editing this file; optional config files are loaded after this baseline.
+
+# Ghostty normally starts the login shell recorded by macOS. Modern personal
+# Macs generally use zsh, so no explicit command is needed. If a managed or
+# directory-backed account still opens /bin/bash and therefore never reads
+# ~/.zshrc, uncomment the following line:
+# command = /bin/zsh -l
+shell-integration = detect
+shell-integration-features = ssh-env,ssh-terminfo
+
+# Appearance. The actual colour theme lives in appearance.ghostty so `devtheme`
+# can switch it without rewriting terminal behaviour.
+font-size = 14
+minimum-contrast = 1.1
+window-padding-x = 8
+window-padding-y = 6
+window-padding-balance = true
+mouse-hide-while-typing = true
+
+# macOS keyboard and password-entry behaviour.
+macos-option-as-alt = left
+macos-auto-secure-input = true
+macos-secure-input-indication = true
+
+# Keep new tabs/splits in the current working directory and retain useful
+# build, model, and coding-agent output without unbounded scrollback.
+window-inherit-working-directory = true
+tab-inherit-working-directory = true
+split-inherit-working-directory = true
+scrollback-limit = 67108864
+confirm-close-surface = true
+
+# Conservative clipboard defaults for commands copied from browsers or AI
+# assistants. Remote applications may write through OSC 52, but reads prompt.
+copy-on-select = false
+clipboard-read = ask
+clipboard-write = allow
+clipboard-paste-protection = true
+clipboard-paste-bracketed-safe = false
+
+# Notify about stable releases without silently replacing the application.
+auto-update = check
+auto-update-channel = stable
+
+# appearance.ghostty is installed once and may be changed by `devtheme`.
+# Both includes are optional so an accidentally removed override cannot prevent
+# the rest of the terminal baseline from loading.
+config-file = ?appearance.ghostty
+config-file = ?local.ghostty

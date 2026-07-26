@@ -2,218 +2,333 @@
 
 Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 
-核心原则：
+设计原则：
 
-- **macOS host-first**：默认只安装通用开发主机软件、本地模型运行器和 uv，不自动创建 Python/AI 环境。
-- **uv-first**：具体项目通过 `pyproject.toml` / `uv.lock` 管理 Python、PyTorch、Hugging Face、scikit-learn 等依赖。
-- **Miniforge + mamba 作为 fallback**：仅用于 conda-forge native 二进制依赖、团队 `environment.yml`、GDAL/HDF5/R/Qt 等复杂依赖。
-- **Windows 优先 WSL2**；被企业策略或系统问题阻断时使用 native Windows fallback。
-- **容器、CUDA Toolkit、Visual Studio Build Tools 和 MLsys profiling 均为可选项**。
+- **主机与项目分离**：装机脚本只管理通用软件和主机配置。
+- **uv-first**：Python、虚拟环境、框架和依赖由各项目自行声明。
+- **少量正交模块**：macOS 只有一个 `core`，另有三个可选 feature。
+- **单一配置来源**：Ghostty 主配置和 `~/.zshrc` 由 repo 管理，首次接管只备份一次。
+- **安全重复执行**：已满足的软件跳过，后续运行不会重复生成备份或初始化区块。
 
-> 本仓库不替代公司的安全、合规和许可证审查。`restricted` / `enterprise` 只是保守默认值模板。
+> 本仓库不替代组织的安全、合规和许可证审查。
 
 ---
 
-## macOS：默认 `minimal` / `core`
+## macOS
 
-适合个人 Apple Silicon Mac、远程服务器为主、本地进行轻量开发与开源模型推理的配置：
+### 推荐安装
+
+个人 Apple Silicon Mac：
+
+```bash
+git clone https://github.com/yangjun42/ai-ml-dev-bootstrap.git
+cd ai-ml-dev-bootstrap
+./scripts/bootstrap-macos.sh --features ai
+```
+
+企业管理设备或暂时不安装公共 AI 应用的 Mac：
+
+```bash
+./scripts/bootstrap-macos.sh
+```
+
+额外需要 ML systems 或容器工具时：
+
+```bash
+./scripts/bootstrap-macos.sh --features ai,mlsys
+./scripts/bootstrap-macos.sh --features containers
+./scripts/bootstrap-macos.sh --features all
+```
+
+全新 Mac 尚未安装 Apple Command Line Tools 时，脚本会请求安装；也可以预先执行：
+
+```bash
+xcode-select --install
+```
+
+### 设计模型
+
+```text
+core     = 所有开发机器共享的主机与终端基线
+feature  = 可选主机能力
+project  = 自己管理 Python、框架、环境和锁文件
+```
+
+正式 feature 只有：
+
+| feature | 内容 |
+|---|---|
+| `ai` | ChatGPT/Codex、Claude Code、Ollama App |
+| `mlsys` | CMake、Ninja、pkgconf、hyperfine |
+| `containers` | Colima、Docker CLI、Docker Compose；不自动启动 |
+| `all` | `ai,mlsys,containers` |
+
+没有 profile、level 或旧接口兼容层。
+
+### `core` 包含什么
 
 ```text
 Homebrew + Brewfile
 Ghostty + macOS OpenSSH + tmux
 Apple Command Line Tools Git + gh + Git LFS
 VS Code
+uv + btop
+Starship + zoxide + fzf
+ripgrep + fd + jq + yq + bat + ShellCheck + just
+zsh-autosuggestions + zsh-syntax-highlighting
+```
+
+Git 与 OpenSSH 使用 macOS / Apple Command Line Tools 提供的版本，不通过 Homebrew 重复安装。
+
+默认终端体验：
+
+```text
+Ghostty dark  : TokyoNight Moon
+Ghostty light : TokyoNight Day
+Starship      : Jetpack
+Shell         : macOS 登录 shell（现代 Mac 通常为 zsh）
+```
+
+Ghostty 配置中保留了这行提示，但新安装默认注释：
+
+```ini
+# command = /bin/zsh -l
+```
+
+只有在目录服务或企业账户仍启动 Bash、导致 `~/.zshrc` 不加载时才需要启用。迁移时如果旧 Ghostty 配置已经启用了这一行，新配置会自动保留该选择。
+
+### `ai`
+
+```bash
+./scripts/bootstrap-macos.sh --features ai
+```
+
+只安装：
+
+```text
 ChatGPT desktop / Codex
 Claude Code CLI
 Ollama App
-uv
-btop
 ```
 
-Git 和 OpenSSH 由 macOS / Apple Command Line Tools 提供，脚本只验证，不通过 Homebrew 重复安装。窗口平铺使用 macOS 原生功能，不默认安装第三方窗口管理器。
+不会自动登录账户、写入 API key、下载模型、创建 Python 环境或安装框架。
 
-### 安装
+Ollama 是本仓库唯一管理的本地模型运行器。`llama.cpp` 与日常本地推理职责高度重叠，只在需要直接操作 GGUF、量化、底层 server 参数或专项 benchmark 时手动安装。FFmpeg 也不进入默认模块。
+
+### `mlsys`
 
 ```bash
-git clone https://github.com/yangjun42/ai-ml-dev-bootstrap.git
-cd ai-ml-dev-bootstrap
-./scripts/bootstrap-macos.sh
+./scripts/bootstrap-macos.sh --features mlsys
 ```
 
-全新 Mac 如果尚未安装 Apple Command Line Tools，先执行：
-
-```bash
-xcode-select --install
-```
-
-默认等价于：
-
-```bash
-./scripts/bootstrap-macos.sh --profile minimal
-./scripts/bootstrap-macos.sh --profile core      # alias
-```
-
-### macOS profiles
-
-| profile | 内容 | 场景 |
-|---|---|---|
-| `minimal` / `core` | 上述精简核心清单 | 默认个人 Mac、远程优先 AI/ML 开发 |
-| `developer` | `minimal` + ripgrep、fd、fzf、jq/yq、bat、ShellCheck、just | 本地 CLI 和仓库操作较多 |
-| `workstation` | `developer` + CMake、Ninja、pkgconf、FFmpeg、Colima、Docker CLI/Compose | 本地 native build 或容器兼容测试 |
-| `restricted` | 主机工具，但不自动安装 ChatGPT、Claude Code、Ollama | 公共 AI 服务和模型运行时需审批的机器 |
-
-兼容别名：
+安装：
 
 ```text
-personal   -> minimal
-enterprise -> restricted
+CMake
+Ninja
+pkgconf
+hyperfine
 ```
 
-使用示例：
+用于 native extension 构建、底层组件编译和可重复命令 benchmark。Python profiling、PyTorch Profiler、ONNX Runtime 等仍由具体项目管理。
+
+### `containers`
 
 ```bash
-./scripts/bootstrap-macos.sh --profile developer
-./scripts/bootstrap-macos.sh --profile workstation
-./scripts/bootstrap-macos.sh --profile restricted
-./scripts/bootstrap-macos.sh --profile minimal --dry-run
+./scripts/bootstrap-macos.sh --features containers
 ```
 
-脚本默认通过 Homebrew Bundle 的 `--no-upgrade` 只补齐缺失软件；需要同步升级时显式使用：
+安装 Colima、Docker CLI 和 Docker Compose，但不会启动虚拟机、修改 Docker context、拉取镜像或创建容器。
+
+### 主题切换
 
 ```bash
-./scripts/bootstrap-macos.sh --profile minimal --upgrade
+devtheme list
+devtheme current
+
+devtheme tokyo        # TokyoNight Moon/Day + Jetpack
+devtheme tokyo-night  # TokyoNight Moon/Day + Tokyo Night preset
+devtheme catppuccin   # Mocha/Latte + Catppuccin Powerline
+devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 ```
 
-详细设计见 [`docs/MACOS_PROFILES.md`](docs/MACOS_PROFILES.md)。
-
-### 默认不会做什么
-
-macOS host bootstrap 不会自动：
+切换后在 Ghostty 中按 `Cmd+Shift+,` 重新加载。首次替换自定义 Starship 配置时只创建一个：
 
 ```text
-安装 VS Code 插件
-安装 Python 或创建 .venv
-安装 PyTorch、MLX、Jupyter、Transformers
-安装 Miniforge/mamba/Pixi
-下载 Ollama 模型
-启动 Colima 或创建容器
-修改 shell framework、主题、alias 或 dotfiles
-登录 ChatGPT、Claude、GitHub 或写入 API key
+~/.config/ai-ml-dev-bootstrap/backups/starship.toml.original
 ```
 
-项目真正需要 Python 时再执行：
+后续切换不会重复备份。
+
+### 从旧 minimal 或手工配置迁移
+
+在旧版本安装过 minimal，并手工配置过 Ghostty / Starship 时，直接运行：
+
+```bash
+./scripts/bootstrap-macos.sh --features ai
+```
+
+行为如下：
+
+1. `brew bundle check` 跳过已经安装的内容，只补齐 core 和 AI feature 缺少的软件。
+2. 默认不升级已安装软件；只有 `--upgrade` 才升级。
+3. Ghostty 主配置首次被 core 接管时备份为：
+
+   ```text
+   ~/.config/ai-ml-dev-bootstrap/backups/config.ghostty.original
+   ```
+
+4. 旧 `~/.zshrc` 首次被接管时备份为：
+
+   ```text
+   ~/.config/ai-ml-dev-bootstrap/backups/zshrc.original
+   ```
+
+5. Ghostty 其余三个可能覆盖主配置的旧路径会分别一次性备份后移除：
+
+   ```text
+   ~/.config/ghostty/config
+     -> ghostty-xdg-legacy-config.original
+
+   ~/Library/Application Support/com.mitchellh.ghostty/config.ghostty
+     -> ghostty-macos-config.original
+
+   ~/Library/Application Support/com.mitchellh.ghostty/config
+     -> ghostty-macos-legacy-config.original
+   ```
+
+6. 旧配置若已启用 `command = /bin/zsh -l`，迁移后继续启用；全新安装仍默认注释。
+7. 现有 `~/.config/starship.toml` 保留，不会被 bootstrap 覆盖。
+8. 现有 `appearance.ghostty` 保留，因此当前 TokyoNight 选择不会被重置。
+9. 第二次及以后运行不会再创建同类备份，也不会叠加 zsh 初始化区块。
+
+Repo 完整管理：
+
+```text
+~/.zshrc
+~/.config/ghostty/config.ghostty
+~/.local/bin/devtheme
+```
+
+机器专属内容放在以下文件，bootstrap 永不覆盖：
+
+```text
+~/.config/zsh/local.zsh
+~/.config/ghostty/local.ghostty
+```
+
+### Python / ML 项目
+
+装机脚本不会安装 Python、创建 `.venv` 或 starter project。项目自己管理环境：
 
 ```bash
 cd project
 uv sync
-# 项目明确需要某个 Python 版本时
-uv python install 3.12
 ```
 
-旧版“自动创建完整 AI starter 环境”的逻辑保留为兼容入口，但不推荐用于新 Mac：
+没有现成项目时：
 
 ```bash
-bash scripts/bootstrap-macos-legacy-ai.sh --profile personal --features core,ai,conda
+uv init --python 3.12 my-project
+cd my-project
+uv add numpy pandas scikit-learn
 ```
+
+需要 PyTorch、MLX、Jupyter、profiling 或 serving 工具时，仅在对应项目中添加。
+
+### 安全与幂等
+
+```bash
+# 查看计划
+./scripts/bootstrap-macos.sh --features ai --dry-run
+
+# 显式允许升级 Homebrew 软件
+./scripts/bootstrap-macos.sh --features ai --upgrade
+
+# 只安装软件，不修改 Ghostty/zsh
+./scripts/bootstrap-macos.sh --features ai --skip-config
+
+# 只更新终端配置
+./scripts/configure-macos-shell.sh
+```
+
+脚本会：
+
+- 先运行 `brew bundle check`，已满足的 manifest 整体跳过；
+- 默认使用 `--no-upgrade`；
+- 对已有主配置只保留固定名称的一次性 `.original` 备份；
+- 使用一个 repo 管理的 `.zshrc`，避免新旧初始化逻辑同时存在；
+- 清理 Ghostty 的其他加载路径，避免后加载文件暗中覆盖；
+- 保留 Starship 活动配置、Ghostty appearance 以及两个 `local.*` override；
+- 重复执行时不产生额外备份、不重置主题、不创建 Python 环境。
+
+详细说明见 [`docs/MACOS.md`](docs/MACOS.md)。
 
 ---
 
-## Miniforge + mamba 是否重复？
+## Windows 11
 
-不完全重复：
-
-```text
-Miniforge = conda-forge 生态的安装入口 / 发行版
-mamba     = 管理 conda 环境和包的快速 CLI / 求解器
-uv        = Python/PyPI/项目环境的默认包管理器
-```
-
-本仓库不会在 macOS minimal profile 中安装 Miniforge。只有项目确实需要 conda-forge native 依赖或兼容同事的 `environment.yml` 时再启用。
-
----
-
-## Windows 11：推荐 WSL2 Ubuntu
+推荐 WSL2 Ubuntu：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\scripts\bootstrap.ps1 -Backend wsl -Profile personal
 ```
 
-Windows 已安装 NVIDIA driver 时，WSL2 会通过 Windows driver bridge 暴露 GPU。普通 PyTorch/Hugging Face 使用通常不需要在 WSL 内安装 Linux CUDA Toolkit；只有需要 `nvcc`、CUDA headers、samples 或编译 CUDA extension 时才启用对应 feature。
+Windows 安装 NVIDIA driver 后，WSL2 可通过 Windows driver bridge 暴露 GPU。普通 PyTorch/Hugging Face 使用通常不需要在 WSL 内安装 Linux CUDA Toolkit；只有需要 `nvcc`、CUDA headers、samples 或编译 CUDA extension 时再启用。
 
-详细说明：
+文档：
 
 - [`docs/WINDOWS_WSL_NVIDIA.md`](docs/WINDOWS_WSL_NVIDIA.md)
 - [`docs/WSL_UPDATE_TRIAGE.md`](docs/WSL_UPDATE_TRIAGE.md)
 
-WSL 更新失败时：
-
-```powershell
-.\scripts\triage-wsl-update.ps1
-```
-
----
-
-## Windows 11：native / 无 WSL fallback
-
-当 WSL 被企业策略或系统问题阻断时：
+WSL 被企业策略或系统问题阻断时：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass -Force
 .\scripts\bootstrap.ps1 -Backend native -Profile enterprise
 ```
 
-等价直接入口：
-
-```powershell
-.\scripts\bootstrap-windows-native.ps1 -Profile enterprise
-```
-
-native Windows 默认仍采用小 feature 组合，并支持把项目、模型、uv cache、Python 和 Miniforge 放到非 C 盘目录。
-
-详细参数和目录策略见 [`docs/WINDOWS_NATIVE_NO_WSL.md`](docs/WINDOWS_NATIVE_NO_WSL.md)。
+详细参数见 [`docs/WINDOWS_NATIVE_NO_WSL.md`](docs/WINDOWS_NATIVE_NO_WSL.md)。
 
 ---
 
 ## 验证
 
-macOS bootstrap 静态检查：
-
 ```bash
 make verify-macos
 ```
 
-已有 starter project 的运行环境检查：
-
-```bash
-make verify-project
-```
-
----
+macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、一次性迁移、全部 Ghostty 配置路径、重复执行、主题切换和配置来源唯一性。
 
 ## 目录结构
 
 ```text
 brewfiles/macos/
-  minimal.Brewfile
-  developer-extra.Brewfile
-  workstation-extra.Brewfile
-  restricted.Brewfile
+  core.Brewfile
+  ai.Brewfile
+  mlsys.Brewfile
+  containers.Brewfile
+
+config/macos/
+  ghostty/config.ghostty
+  ghostty/appearance.ghostty
+  zsh/core.zsh
+  bin/devtheme
 
 scripts/
-  bootstrap-macos.sh             # 默认 Mac host bootstrap
-  bootstrap-macos-legacy-ai.sh   # 旧完整 AI 环境兼容入口
-  bootstrap.ps1                  # Windows unified entrypoint
-  bootstrap-windows-native.ps1   # native Windows/no-WSL backend
-  bootstrap-wsl.sh               # WSL Ubuntu backend
-  verify-macos-bootstrap.sh
+  bootstrap-macos.sh
+  configure-macos-shell.sh
+  bootstrap.ps1
+  bootstrap-windows-native.ps1
+  bootstrap-wsl.sh
 
 docs/
-  MACOS_PROFILES.md
+  MACOS.md
+  ARCHITECTURE.md
   WINDOWS_NATIVE_NO_WSL.md
   WINDOWS_WSL_NVIDIA.md
   WSL_UPDATE_TRIAGE.md
-  ARCHITECTURE.md
 ```
 
 ## License

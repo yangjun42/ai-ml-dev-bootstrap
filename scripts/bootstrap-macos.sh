@@ -1,46 +1,114 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE="minimal"
+FEATURES_CSV=""
 DRY_RUN=0
 UPGRADE=0
+SKIP_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FEATURES=()
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/bootstrap-macos.sh [options]
 
-Profiles:
-  minimal      Default. Core personal Mac setup for AI/software development.
-  core         Alias for minimal.
-  developer    minimal + common CLI developer utilities.
-  workstation  developer + native build and Docker-compatible tooling.
-  restricted   Host-only setup without public AI apps or Ollama.
+The core development host is always installed. Add only the host capabilities
+that this Mac needs.
 
-Compatibility aliases:
-  personal     Alias for minimal.
-  enterprise   Alias for restricted.
+Optional features (comma-separated):
+  ai          ChatGPT/Codex, Claude Code, and Ollama.
+  mlsys       CMake, Ninja, pkgconf, and hyperfine for ML systems work.
+  containers  Colima and Docker-compatible CLI tooling; does not start Colima.
+  all         Enable ai, mlsys, and containers.
 
 Options:
-  --profile NAME  Select a profile. Default: minimal.
-  --upgrade       Update Homebrew metadata and allow package upgrades.
-  --dry-run       Print the selected Brewfiles without installing anything.
-  -h, --help      Show this help.
+  --features LIST  Example: ai or ai,mlsys.
+  --upgrade        Update Homebrew metadata and allow package upgrades.
+  --skip-config    Install packages only; do not manage Ghostty/zsh files.
+  --dry-run        Print package and configuration actions without changing them.
+  -h, --help       Show this help.
 
-This host bootstrap intentionally does not install Python, PyTorch, MLX,
-Miniforge, VS Code extensions, model weights, or project environments.
+Python versions, virtual environments, ML frameworks, notebooks, profiling
+packages, and project dependencies are intentionally managed inside each
+repository with uv.
 EOF
+}
+
+log() {
+  printf '[bootstrap-macos] %s\n' "$*"
+}
+
+append_feature() {
+  local candidate="$1"
+  local existing
+  for existing in "${FEATURES[@]}"; do
+    [[ "$existing" == "$candidate" ]] && return 0
+  done
+  FEATURES+=("$candidate")
+}
+
+feature_enabled() {
+  local needle="$1"
+  local existing
+  for existing in "${FEATURES[@]}"; do
+    [[ "$existing" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+parse_feature_list() {
+  local csv="$1"
+  local old_ifs="$IFS"
+  local item normalized
+
+  IFS=','
+  for item in $csv; do
+    normalized="$(printf '%s' "$item" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [[ -n "$normalized" ]] || continue
+
+    case "$normalized" in
+      ai|mlsys|containers)
+        append_feature "$normalized"
+        ;;
+      all)
+        append_feature ai
+        append_feature mlsys
+        append_feature containers
+        ;;
+      *)
+        echo "Unknown macOS feature: $normalized" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+  done
+  IFS="$old_ifs"
+}
+
+feature_summary() {
+  if [[ "${#FEATURES[@]}" -eq 0 ]]; then
+    printf 'none'
+  else
+    local old_ifs="$IFS"
+    IFS=','
+    printf '%s' "${FEATURES[*]}"
+    IFS="$old_ifs"
+  fi
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)
-      [[ $# -ge 2 ]] || { echo "--profile requires a value" >&2; exit 2; }
-      PROFILE="$2"
+    --features)
+      [[ $# -ge 2 ]] || { echo "--features requires a value" >&2; exit 2; }
+      FEATURES_CSV="$2"
       shift 2
       ;;
     --upgrade)
       UPGRADE=1
+      shift
+      ;;
+    --skip-config)
+      SKIP_CONFIG=1
       shift
       ;;
     --dry-run)
@@ -51,11 +119,6 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    --features|--python)
-      echo "The old project-environment options moved out of the default Mac bootstrap." >&2
-      echo "Use scripts/bootstrap-macos-legacy-ai.sh only when the former full setup is explicitly required." >&2
-      exit 2
-      ;;
     *)
       echo "Unknown argument: $1" >&2
       usage >&2
@@ -64,25 +127,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "$PROFILE" in
-  core|personal) PROFILE="minimal" ;;
-  enterprise) PROFILE="restricted" ;;
-  minimal|developer|workstation|restricted) ;;
-  *)
-    echo "Unknown macOS profile: $PROFILE" >&2
-    usage >&2
-    exit 2
-    ;;
-esac
+parse_feature_list "$FEATURES_CSV"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This entrypoint is for macOS. Use the Windows/WSL scripts on other systems." >&2
+  echo "This entrypoint is for macOS. Use the Windows/WSL scripts elsewhere." >&2
   exit 1
 fi
-
-log() {
-  printf '[bootstrap-macos] %s\n' "$*"
-}
 
 ensure_command_line_tools() {
   if xcode-select -p >/dev/null 2>&1; then
@@ -94,9 +144,9 @@ ensure_command_line_tools() {
     return
   fi
 
-  log "Apple Command Line Tools are required for the system Git and developer SDKs."
+  log "Apple Command Line Tools are required for system Git and SDKs."
   xcode-select --install >/dev/null 2>&1 || true
-  echo "Complete the macOS installer dialog, then re-run this command." >&2
+  echo "Complete the macOS installer dialog, then rerun this command." >&2
   exit 2
 }
 
@@ -126,19 +176,23 @@ ensure_homebrew() {
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   load_homebrew_into_path
 
-  if ! command -v brew >/dev/null 2>&1; then
+  command -v brew >/dev/null 2>&1 || {
     echo "Homebrew was installed but is not available in this shell." >&2
-    echo "Follow the shellenv instructions printed by the Homebrew installer, then re-run." >&2
+    echo "Apply the shellenv instructions printed by Homebrew, then rerun." >&2
     exit 1
-  fi
+  }
+}
+
+bundle_is_satisfied() {
+  local file="$1"
+  HOMEBREW_NO_AUTO_UPDATE=1 \
+  HOMEBREW_BUNDLE_NO_UPGRADE=1 \
+    brew bundle check --file="$file" >/dev/null 2>&1
 }
 
 bundle_file() {
   local file="$1"
-  if [[ ! -f "$file" ]]; then
-    echo "Missing Brewfile: $file" >&2
-    exit 1
-  fi
+  [[ -f "$file" ]] || { echo "Missing Brewfile: $file" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
     log "would apply $file"
@@ -146,87 +200,95 @@ bundle_file() {
     return
   fi
 
-  local args=(bundle "--file=$file")
-  if [[ "$UPGRADE" != "1" ]]; then
-    args+=(--no-upgrade)
+  if [[ "$UPGRADE" != "1" ]] && bundle_is_satisfied "$file"; then
+    log "already satisfied: $(basename "$file")"
+    return
   fi
 
   log "applying $(basename "$file")"
   if [[ "$UPGRADE" == "1" ]]; then
-    brew "${args[@]}"
+    brew bundle --file="$file"
   else
-    HOMEBREW_NO_AUTO_UPDATE=1 brew "${args[@]}"
+    HOMEBREW_NO_AUTO_UPDATE=1 \
+    HOMEBREW_BUNDLE_NO_UPGRADE=1 \
+      brew bundle --file="$file" --no-upgrade
   fi
+
+  bundle_is_satisfied "$file" || {
+    echo "Brewfile is still not fully satisfied: $file" >&2
+    exit 1
+  }
 }
 
 ensure_command_line_tools
 ensure_homebrew
 
-BREWFILES=("$REPO_ROOT/brewfiles/macos/minimal.Brewfile")
-case "$PROFILE" in
-  minimal)
-    ;;
-  developer)
-    BREWFILES+=("$REPO_ROOT/brewfiles/macos/developer-extra.Brewfile")
-    ;;
-  workstation)
-    BREWFILES+=(
-      "$REPO_ROOT/brewfiles/macos/developer-extra.Brewfile"
-      "$REPO_ROOT/brewfiles/macos/workstation-extra.Brewfile"
-    )
-    ;;
-  restricted)
-    BREWFILES=("$REPO_ROOT/brewfiles/macos/restricted.Brewfile")
-    export HOMEBREW_NO_ANALYTICS=1
-    ;;
-esac
+if [[ "$UPGRADE" == "1" && "$DRY_RUN" != "1" ]]; then
+  brew update
+fi
 
-log "profile=$PROFILE repo=$REPO_ROOT"
+BREWFILES=("$REPO_ROOT/brewfiles/macos/core.Brewfile")
+feature_enabled ai && BREWFILES+=("$REPO_ROOT/brewfiles/macos/ai.Brewfile")
+feature_enabled mlsys && BREWFILES+=("$REPO_ROOT/brewfiles/macos/mlsys.Brewfile")
+feature_enabled containers && BREWFILES+=("$REPO_ROOT/brewfiles/macos/containers.Brewfile")
+
+log "features=$(feature_summary) repo=$REPO_ROOT"
 for file in "${BREWFILES[@]}"; do
   bundle_file "$file"
 done
+
+if [[ "$SKIP_CONFIG" != "1" ]]; then
+  CONFIG_ARGS=()
+  [[ "$DRY_RUN" == "1" ]] && CONFIG_ARGS+=(--dry-run)
+  bash "$REPO_ROOT/scripts/configure-macos-shell.sh" "${CONFIG_ARGS[@]}"
+else
+  log "skipping Ghostty/zsh configuration by request"
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
   log "dry run complete"
   exit 0
 fi
 
-# Configure Git LFS filters globally, but do not change any repository.
 if command -v git-lfs >/dev/null 2>&1; then
   git lfs install --skip-repo
 fi
 
-log "installed profile: $PROFILE"
+log "installed core features=$(feature_summary)"
 printf '\nSystem-provided tools (not reinstalled):\n'
 printf '  git: %s\n' "$(git --version 2>/dev/null || echo 'not found')"
 printf '  ssh: %s\n' "$(ssh -V 2>&1 | head -n 1 || echo 'not found')"
-printf '\nBootstrap-managed core tools:\n'
-printf '  uv: %s\n' "$(uv --version 2>/dev/null || echo 'not found')"
-printf '  tmux: %s\n' "$(tmux -V 2>/dev/null || echo 'not found')"
-printf '  gh: %s\n' "$(gh --version 2>/dev/null | head -n 1 || echo 'not found')"
-printf '  git-lfs: %s\n' "$(git-lfs --version 2>/dev/null || echo 'not found')"
-printf '  btop: %s\n' "$(btop --version 2>/dev/null | head -n 1 || echo 'not found')"
+printf '\nCore tools:\n'
+for command_name in uv tmux gh git-lfs btop starship zoxide fzf; do
+  if command -v "$command_name" >/dev/null 2>&1; then
+    printf '  %-10s %s\n' "$command_name:" "$($command_name --version 2>/dev/null | head -n 1 || echo installed)"
+  else
+    printf '  %-10s %s\n' "$command_name:" "not found"
+  fi
+done
 
 cat <<'EOF'
 
-Not performed by design:
-  - no VS Code extensions
-  - no account login or credential setup
-  - no Ollama model downloads or background-service changes
-  - no Python installation, virtual environment, or AI/ML project dependencies
-  - no shell-framework or dotfile changes
+Project ownership by design:
+  - no Python installation or virtual environment
+  - no PyTorch, MLX, Jupyter, profiling package, or other framework dependency
+  - no Miniforge/conda environment
+  - no VS Code extensions, account login, API key, SSH key, or model download
+  - no Oh My Zsh
+
+Use uv inside each repository, for example: uv sync
 EOF
 
-if [[ "$PROFILE" == "restricted" ]]; then
+if feature_enabled ai; then
   cat <<'EOF'
 
-Restricted profile complete. Public AI apps and Ollama were intentionally not installed.
-Use organization-approved applications, mirrors, and model runtimes as required.
+AI applications are installed. Open Ollama once before using its CLI, sign in to
+ChatGPT/Codex and Claude Code as needed, and restart Ghostty for shell settings.
 EOF
 else
   cat <<'EOF'
 
-Open ChatGPT to use ChatGPT/Codex, open Ollama once before using the CLI,
-and let each project declare its own environment with uv when needed.
+Core is ready. Add the AI applications later with:
+  ./scripts/bootstrap-macos.sh --features ai
 EOF
 fi

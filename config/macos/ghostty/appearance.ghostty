@@ -1,0 +1,3 @@
+# Initial appearance for ai-ml-dev-bootstrap.
+# This file is installed only when absent. The `devtheme` helper may update it.
+theme = dark:TokyoNight Moon,light:TokyoNight Day

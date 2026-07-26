@@ -1,73 +1,173 @@
 # Architecture notes
 
-## Tool ownership model
+## Design model
 
-This repo uses a layered ownership model:
-
-1. OS/package bootstrap:
-   - Windows WSL backend: winget + WSL2 Ubuntu.
-   - Windows native backend: uv-first, small feature groups, optional winget packages.
-   - macOS: Homebrew Bundle for a small host profile; Apple Command Line Tools provide Git and OpenSSH.
-2. Python project dependencies:
-   - uv is the default owner for Python versions, virtual environments, PyPI packages, and lockfiles.
-   - The default macOS host bootstrap installs the uv binary but does not create Python environments.
-3. Native/scientific binary dependencies:
-   - Miniforge provides the conda-forge entrypoint when a project needs it.
-   - mamba is used as the fast CLI for conda environments.
-4. Containers:
-   - Optional. Use for reproducibility, CI parity, or deployment validation.
-   - The macOS `workstation` profile provides Colima and Docker-compatible CLIs but does not start them.
-5. Local model runtime:
-   - The macOS `minimal` profile installs Ollama App without downloading models.
-   - Direct MLX/MLX-LM development remains a project-level dependency managed with uv.
-
-## Why not Anaconda Distribution by default?
-
-Anaconda Distribution is convenient for teaching and enterprise setups that already standardize on it, but it is large and defaults to Anaconda channels. For a fresh open-source-first setup, Miniforge is smaller and defaults to conda-forge. Neither is part of the minimal Mac host profile.
-
-## Why not uv-only everywhere?
-
-uv is excellent for Python projects, but conda-forge remains strong when packages depend on non-Python native stacks: GDAL, HDF5, NetCDF, Qt, R, BioConductor, system BLAS variants, legacy scientific binaries, and cross-language toolchains.
-
-## Windows design
-
-When WSL2 is available, Windows is used as the desktop host and the AI/ML environment is created inside WSL2 Ubuntu. This avoids most Windows-native CUDA, compiler, and symlink/path issues.
-
-When WSL2 is blocked or broken, the native Windows backend is the fallback. It defaults to `minimal,ai`, checks for existing commands before installing packages, shows WinGet progress by default, and allows project/cache/tool paths to be placed outside the default C:\Users tree.
-
-## macOS design
-
-macOS is treated as a lightweight developer host and remote-server control plane by default.
+The repository uses three concepts:
 
 ```text
-minimal/core -> terminal, SSH/Git integration, editor, coding agents,
-                Ollama, uv, and small desktop utilities
-
-developer    -> minimal + common CLI repository tools
-
-workstation  -> developer + local native-build and Docker-compatible tools
-
-restricted   -> host-only variant without public AI apps or Ollama
+core     shared host baseline
+feature  optional host capability
+project  owns language and ML dependencies
 ```
 
-The default profile does not install Python, PyTorch, MLX, Jupyter, conda, model weights, VS Code extensions, or shell frameworks. Each project owns those decisions through `pyproject.toml`, `uv.lock`, or a project-specific conda definition.
+There is no macOS profile hierarchy or compatibility layer. The public macOS
+interface is intentionally limited to:
 
-`personal` and `enterprise` remain compatibility aliases for `minimal` and `restricted` respectively. See [MACOS_PROFILES.md](MACOS_PROFILES.md).
+```text
+features: ai, mlsys, containers
+```
 
-## Enterprise/restricted design
+## Ownership boundaries
 
-The restricted profile is not a legal guarantee. It is a safer host default:
+### Host bootstrap
 
-- no automatic installation of ChatGPT, Claude Code, or Ollama;
-- no token setup or application login;
-- no automatic model downloads;
-- no Python project or public package-index configuration;
-- room for organization-approved internal mirrors and applications.
+The host bootstrap owns:
 
-The existing environment policy files remain available for Windows/WSL and legacy project bootstrap workflows:
+- operating-system package managers;
+- general development applications and CLIs;
+- terminal and shell configuration;
+- explicitly selected AI applications, ML systems tools, and container CLIs.
 
-- W&B offline mode;
-- MLflow local file tracking;
-- Hugging Face telemetry disabled;
-- conda-forge + nodefaults guidance;
-- private PyPI/conda mirror placeholders.
+On macOS, Homebrew Bundle manages packages while Apple Command Line Tools
+provide Git, OpenSSH, compilers, and SDKs.
+
+### Project
+
+Each repository owns:
+
+- Python version constraints;
+- `.venv` and dependency lockfiles;
+- PyTorch, MLX, JAX, TensorFlow, Jupyter, and other frameworks;
+- profiling/runtime packages tied to that project;
+- model and dataset choices.
+
+uv is installed by core and is the default project tool, but the host never
+creates an environment or starter project.
+
+### User and organization
+
+The bootstrap does not own:
+
+- logins, API keys, SSH keys, or secrets;
+- VS Code extensions;
+- enterprise allowlists, mirrors, firewall rules, or license review;
+- project dependencies.
+
+## macOS modules
+
+### Core
+
+Core is always installed and contains the common terminal, editor, repository,
+and shell experience:
+
+```text
+Ghostty
+macOS zsh
+Starship
+zoxide
+fzf
+zsh-autosuggestions
+zsh-syntax-highlighting
+ripgrep / fd / jq / yq / bat / ShellCheck / just
+```
+
+Oh My Zsh, Powerlevel10k, and terminal file managers remain separate personal
+choices.
+
+### `ai`
+
+The AI feature contains only end-user AI applications:
+
+```text
+ChatGPT / Codex
+Claude Code
+Ollama
+```
+
+It does not install models, Python packages, or a second inference engine.
+Ollama is the convenient local runtime. `llama.cpp` is deliberately excluded
+because its ordinary inference role overlaps with Ollama; it remains a manual
+advanced choice for direct GGUF, quantization, server flags, or runtime work.
+
+### `mlsys`
+
+The ML systems feature contains host-side build and benchmark tools:
+
+```text
+CMake
+Ninja
+pkgconf
+hyperfine
+```
+
+It remains separate from `ai`: one is for applications and local model access,
+the other for systems engineering. Project-specific profilers and runtimes stay
+inside project dependency files.
+
+### `containers`
+
+The containers feature installs Colima and Docker-compatible CLIs but does not
+start a VM, service, or container.
+
+## Configuration ownership
+
+The macOS configurator uses one source of truth per concern.
+
+### Managed files
+
+```text
+~/.zshrc
+~/.config/ghostty/config.ghostty
+~/.local/bin/devtheme
+```
+
+When an existing file is adopted, its original content is saved once under:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/<name>.original
+```
+
+Fixed backup names prevent timestamped backup accumulation. Repeated runs simply
+compare and update the managed file.
+
+### User-owned overrides
+
+```text
+~/.config/zsh/local.zsh
+~/.config/ghostty/local.ghostty
+~/.config/ghostty/appearance.ghostty
+~/.config/starship.toml
+```
+
+- `local.zsh` and `local.ghostty` are never created or overwritten.
+- `appearance.ghostty` is installed only when absent.
+- an existing Starship config is preserved;
+- an explicit `devtheme` switch backs it up once as
+  `starship.toml.original` before selecting a managed preset.
+
+Ghostty's later macOS Application Support config path is removed after one-time
+backup so it cannot silently override the XDG config.
+
+The managed Ghostty config uses the macOS login shell by default. A commented
+`command = /bin/zsh -l` recovery line is provided for directory-managed accounts
+that still start Bash.
+
+## Repeatability
+
+- `brew bundle check` provides the fast path for satisfied manifests.
+- Homebrew upgrades require explicit `--upgrade`.
+- Git LFS initialization is idempotent.
+- Optional features are independently selectable.
+- No macOS feature writes into a project directory.
+- Existing packages are not reinstalled and unrelated packages are not removed.
+- Configuration adoption creates at most one original backup per managed file.
+- CI runs configuration tests on both Linux and macOS runners.
+
+## Windows model
+
+Windows remains separate because its constraints differ:
+
+- preferred: Windows host + WSL2 Ubuntu for Linux/CUDA-oriented development;
+- fallback: native Windows when WSL is unavailable or blocked;
+- CUDA Toolkit, native compilers, conda compatibility, containers, and MLsys
+  tooling remain explicit where that platform workflow requires them.
