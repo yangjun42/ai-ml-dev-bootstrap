@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE="minimal"
+PROFILE="core"
 DRY_RUN=0
 FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,14 +11,14 @@ usage() {
 Usage: ./scripts/configure-macos-shell.sh [options]
 
 Options:
-  --profile minimal|developer|workstation|restricted
+  --profile core|restricted
   --force-config  Back up and replace an unmanaged Ghostty main config.
   --dry-run       Print intended changes without writing files.
   -h, --help      Show this help.
 
-The script merges marked blocks into ~/.zshrc, installs a managed Ghostty
-baseline, preserves appearance/local overrides, and configures Starship only
-for developer/workstation profiles.
+Both profiles use the same reliable Ghostty, zsh, Starship, navigation, and
+interactive-shell baseline. The profile difference is package policy, not a
+second terminal configuration tier.
 EOF
 }
 
@@ -50,9 +50,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$PROFILE" in
-  core|personal) PROFILE="minimal" ;;
+  core|restricted) ;;
+  minimal|developer|personal|workstation) PROFILE="core" ;;
   enterprise) PROFILE="restricted" ;;
-  minimal|developer|workstation|restricted) ;;
   *) echo "Unknown macOS profile: $PROFILE" >&2; exit 2 ;;
 esac
 
@@ -73,7 +73,7 @@ backup_file() {
   local name="$2"
   [[ -e "$source" || -L "$source" ]] || return 0
   mkdir -p "$BACKUP_ROOT"
-  cp -p "$source" "$BACKUP_ROOT/${name}.${TIMESTAMP}"
+  cp -pL "$source" "$BACKUP_ROOT/${name}.${TIMESTAMP}"
   log "backup: $BACKUP_ROOT/${name}.${TIMESTAMP}"
 }
 
@@ -141,56 +141,49 @@ install_if_missing() {
   fi
 }
 
-managed_marker_count() {
+marker_count() {
+  grep -Fc "$2" "$1" 2>/dev/null || true
+}
+
+validate_markers() {
   local file="$1"
-  local marker="$2"
-  grep -Fc "$marker" "$file" 2>/dev/null || true
+  local name
+  for name in macos-core macos-minimal macos-developer; do
+    local starts ends
+    starts="$(marker_count "$file" "# >>> ai-ml-dev-bootstrap:${name} >>>")"
+    ends="$(marker_count "$file" "# <<< ai-ml-dev-bootstrap:${name} <<<")"
+    if [[ "$starts" != "$ends" ]]; then
+      echo "Malformed ai-ml-dev-bootstrap block markers in $file: $name" >&2
+      exit 1
+    fi
+  done
 }
 
 configure_zshrc() {
   local zshrc="$HOME/.zshrc"
-  local minimal_template="$REPO_ROOT/config/macos/zsh/minimal.zsh"
-  local developer_template="$REPO_ROOT/config/macos/zsh/developer.zsh"
-  local include_developer=0
-  local zshrc_had_content=0
+  local template="$REPO_ROOT/config/macos/zsh/core.zsh"
+  local had_content=0
 
-  [[ -f "$minimal_template" && -f "$developer_template" ]] || {
-    echo "Missing zsh templates under config/macos/zsh" >&2
-    exit 1
-  }
-
-  if [[ "$PROFILE" == "developer" || "$PROFILE" == "workstation" ]]; then
-    include_developer=1
-  elif [[ -f "$zshrc" ]] && grep -Fq '# >>> ai-ml-dev-bootstrap:macos-developer >>>' "$zshrc"; then
-    # Profiles are additive: do not silently remove an existing developer block.
-    include_developer=1
-  fi
+  [[ -f "$template" ]] || { echo "Missing zsh template: $template" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would merge minimal zsh block into: $zshrc"
-    [[ "$include_developer" == "1" ]] && log "would merge developer zsh block into: $zshrc"
+    log "would merge core zsh block into: $zshrc"
     return
   fi
 
-  [[ -s "$zshrc" || -L "$zshrc" ]] && zshrc_had_content=1
+  [[ -s "$zshrc" || -L "$zshrc" ]] && had_content=1
   touch "$zshrc"
-
-  local minimal_starts minimal_ends developer_starts developer_ends
-  minimal_starts="$(managed_marker_count "$zshrc" '# >>> ai-ml-dev-bootstrap:macos-minimal >>>')"
-  minimal_ends="$(managed_marker_count "$zshrc" '# <<< ai-ml-dev-bootstrap:macos-minimal <<<')"
-  developer_starts="$(managed_marker_count "$zshrc" '# >>> ai-ml-dev-bootstrap:macos-developer >>>')"
-  developer_ends="$(managed_marker_count "$zshrc" '# <<< ai-ml-dev-bootstrap:macos-developer <<<')"
-
-  if [[ "$minimal_starts" != "$minimal_ends" || "$developer_starts" != "$developer_ends" ]]; then
-    echo "Malformed ai-ml-dev-bootstrap block markers in $zshrc; refusing to edit." >&2
-    exit 1
-  fi
+  validate_markers "$zshrc"
 
   local stripped tmp
   stripped="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc-stripped.XXXXXX")"
   tmp="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc.XXXXXX")"
 
+  # Remove the current core block and both blocks from the previous profile
+  # design, while preserving all unmarked user content.
   awk '
+    $0 == "# >>> ai-ml-dev-bootstrap:macos-core >>>" { skip = 1; next }
+    $0 == "# <<< ai-ml-dev-bootstrap:macos-core <<<" { skip = 0; next }
     $0 == "# >>> ai-ml-dev-bootstrap:macos-minimal >>>" { skip = 1; next }
     $0 == "# <<< ai-ml-dev-bootstrap:macos-minimal <<<" { skip = 0; next }
     $0 == "# >>> ai-ml-dev-bootstrap:macos-developer >>>" { skip = 1; next }
@@ -198,8 +191,7 @@ configure_zshrc() {
     !skip { print }
   ' "$zshrc" > "$stripped"
 
-  # Remove only trailing blank lines from unowned user content so repeated runs
-  # do not accumulate whitespace before the managed blocks.
+  # Trim only trailing blank lines from unowned content, then append one block.
   awk '
     { lines[NR] = $0 }
     END {
@@ -211,21 +203,17 @@ configure_zshrc() {
   rm -f "$stripped"
 
   [[ -s "$tmp" ]] && printf '\n\n' >> "$tmp"
-  cat "$minimal_template" >> "$tmp"
-  if [[ "$include_developer" == "1" ]]; then
-    printf '\n' >> "$tmp"
-    cat "$developer_template" >> "$tmp"
-  fi
+  cat "$template" >> "$tmp"
   printf '\n' >> "$tmp"
 
   if cmp -s "$tmp" "$zshrc"; then
     rm -f "$tmp"
     log "already current: $zshrc"
   else
-    [[ "$zshrc_had_content" == "1" ]] && backup_file "$zshrc" "zshrc"
+    [[ "$had_content" == "1" ]] && backup_file "$zshrc" "zshrc"
     cat "$tmp" > "$zshrc"
     rm -f "$tmp"
-    log "updated managed blocks: $zshrc"
+    log "updated managed block: $zshrc"
   fi
 
   touch "$HOME/.zsh_history"
@@ -233,22 +221,22 @@ configure_zshrc() {
 }
 
 configure_starship() {
-  local preset_root="$HOME/.config/starship/presets"
+  local config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local preset_root="$config_root/starship/presets"
   local jetpack="$preset_root/jetpack.toml"
-  local active="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"
+  local active="${STARSHIP_CONFIG:-$config_root/starship.toml}"
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would ensure Starship Jetpack at the active config path: $active"
-    log "would install ~/.local/bin/devtheme"
+    log "would ensure Starship Jetpack and install ~/.local/bin/devtheme"
     return
   fi
 
-  if ! command -v starship >/dev/null 2>&1; then
-    echo "developer profile requires starship, but it is not on PATH" >&2
+  command -v starship >/dev/null 2>&1 || {
+    echo "core profile requires starship, but it is not on PATH" >&2
     exit 1
-  fi
+  }
 
-  mkdir -p "$preset_root" "$(dirname "$active")" "$HOME/.local/bin"
+  mkdir -p "$preset_root" "$HOME/.local/bin" "$(dirname "$active")"
   if [[ ! -s "$jetpack" ]]; then
     starship preset jetpack -o "$jetpack"
     log "generated Starship preset: $jetpack"
@@ -261,7 +249,7 @@ configure_starship() {
     log "selected default Starship preset: Jetpack"
   elif [[ -L "$active" && ! -e "$active" ]]; then
     ln -sfn "$jetpack" "$active"
-    log "repaired dangling Starship preset link"
+    log "repaired dangling Starship config link"
   else
     log "preserving active Starship config: $active"
   fi
@@ -279,9 +267,7 @@ if [[ -f "$MACOS_GHOSTTY_CONFIG" ]]; then
   log "         $MACOS_GHOSTTY_CONFIG"
 fi
 
-if [[ "$PROFILE" == "developer" || "$PROFILE" == "workstation" ]]; then
-  configure_starship
-fi
+configure_starship
 configure_zshrc
 
 if [[ "$DRY_RUN" != "1" ]]; then
