@@ -1,132 +1,127 @@
 # Architecture notes
 
-## Tool ownership model
+## Design goals
 
-This repo uses a layered ownership model:
-
-1. OS/package bootstrap:
-   - Windows WSL backend: winget + WSL2 Ubuntu.
-   - Windows native backend: uv-first, small feature groups, optional winget packages.
-   - macOS: Homebrew Bundle for host applications and CLI tools; Apple Command Line Tools provide Git and OpenSSH.
-2. macOS terminal configuration:
-   - `minimal` owns a small Ghostty baseline and marked zsh history/completion block.
-   - `developer` adds a second marked zsh block plus Starship/zoxide/fzf integrations.
-   - user-owned Ghostty appearance/local overrides and unmarked `.zshrc` content are preserved.
-3. Python project dependencies:
-   - uv is the default owner for Python versions, virtual environments, PyPI packages, and lockfiles.
-   - the default macOS host bootstrap installs the uv binary but does not create Python environments.
-4. Native/scientific binary dependencies:
-   - Miniforge provides the conda-forge entrypoint when a project needs it.
-   - mamba is used as the fast CLI for conda environments.
-5. Containers:
-   - optional; use for reproducibility, CI parity, or deployment validation.
-   - the macOS `workstation` profile provides Colima and Docker-compatible CLIs but does not start them.
-6. Local model runtime:
-   - the macOS `minimal` profile installs Ollama App without downloading models.
-   - direct MLX/MLX-LM development remains a project-level dependency managed with uv.
-
-## Configuration ownership and repeatability
-
-Host package state is declarative through Brewfiles. `brew bundle check` provides
-a fast no-op path and installation is followed by a satisfaction check. The
-default uses `--no-upgrade`.
-
-Terminal files use narrower ownership boundaries:
+The repository favors a small number of concepts:
 
 ```text
-repository-owned and refreshable
-  ~/.config/ghostty/config.ghostty
-  marked blocks inside ~/.zshrc
-  ~/.local/bin/devtheme
-
-created once, then user-owned
-  ~/.config/ghostty/appearance.ghostty
-
-never created or modified
-  ~/.config/ghostty/local.ghostty
-  unmarked ~/.zshrc content
+profile  = policy
+feature  = optional capability
+project  = owns its language and ML dependencies
 ```
 
-An unmanaged or symlinked Ghostty main config is not silently replaced. The
-configurator writes a review candidate unless the user explicitly supplies
-`--force-config`. Managed-file and zsh backups are kept under
-`~/.config/ai-ml-dev-bootstrap/backups/`.
+This avoids duplicated installation tiers and keeps modules composable,
+idempotent, and independently testable.
 
-## Why not Anaconda Distribution by default?
+## Tool ownership
 
-Anaconda Distribution is convenient for teaching and enterprise setups that
-already standardize on it, but it is large and defaults to Anaconda channels.
-For a fresh open-source-first setup, Miniforge is smaller and defaults to
-conda-forge. Neither is part of the minimal Mac host profile.
+1. **OS/package bootstrap**
+   - macOS: Homebrew Bundle; Apple Command Line Tools provide Git/OpenSSH.
+   - Windows host: WinGet, with WSL2 Ubuntu preferred for Linux-oriented AI work.
+2. **Terminal and host configuration**
+   - Ghostty and one marked zsh block are managed by the macOS configurator.
+   - Unmarked dotfile content and machine-local overrides remain user-owned.
+3. **Python projects**
+   - uv owns Python versions, `.venv`, PyPI dependencies, and lockfiles.
+   - The macOS host bootstrap installs uv but creates a project only when the
+     `ai` or `mlsys` feature is selected.
+4. **Conda/native compatibility**
+   - Miniforge is installed only by the `conda` feature.
+   - mamba is the preferred conda-compatible CLI.
+5. **Containers and native build tools**
+   - Explicit `build` and `containers` features; neither is a core prerequisite.
+6. **Local model runtime**
+   - The personal `core` profile installs Ollama App without downloading models.
+   - Direct MLX/MLX-LM development remains project-scoped.
+
+## macOS model
+
+Only two policy profiles are exposed:
+
+```text
+core        complete personal developer host, including AI applications
+restricted  same open-source host/terminal baseline, omitting public AI apps
+```
+
+Capabilities are orthogonal:
+
+```text
+ai          local uv AI/ML starter project
+conda       Miniforge + mamba compatibility layer
+mlsys       AI feature + profiling/benchmark/runtime tools
+build       native build tools
+containers  Colima + Docker-compatible CLI tools
+```
+
+`mlsys` implies `ai`, because profiling packages extend the same project rather
+than creating a second overlapping Python environment.
+
+The previous `minimal`, `developer`, and `workstation` names remain compatibility
+aliases only. They are not separate architecture layers.
+
+## Why core includes the polished terminal stack
+
+For this repository's target user, Starship, zoxide, fzf, autosuggestions,
+syntax highlighting, and basic repository CLIs are small, mainstream daily-use
+tools. Splitting them into a second profile produced two nearly identical host
+states and made onboarding less predictable. They now form one tested core.
+
+The core terminal configuration is deliberately framework-free:
+
+```text
+Ghostty
+macOS zsh
+Starship
+zoxide
+fzf
+zsh-autosuggestions
+zsh-syntax-highlighting
+```
+
+Oh My Zsh, Powerlevel10k, and terminal file managers remain personal choices.
+
+## Configuration ownership
+
+The macOS configurator follows these rules:
+
+- managed Ghostty main config: timestamped backup before update;
+- unmanaged or symlinked Ghostty config: preserve and emit review candidate;
+- `appearance.ghostty`: install only when absent;
+- `local.ghostty`: never create or modify;
+- `.zshrc`: replace only one marked `macos-core` block;
+- previous managed blocks: migrate automatically;
+- Starship config: generate Jetpack only when no active config exists;
+- explicit `devtheme` switch: back up custom Starship config first.
+
+## Repeatability
+
+- `brew bundle check` provides the fast path for satisfied manifests.
+- Homebrew upgrades require explicit `--upgrade`.
+- Git LFS initialization is idempotent.
+- AI project setup refuses to populate a non-empty unrelated directory.
+- Optional features are independently selectable and may be composed.
+- CI runs configuration tests on both Linux and macOS runners.
 
 ## Why not uv-only everywhere?
 
-uv is excellent for Python projects, but conda-forge remains strong when
-packages depend on non-Python native stacks: GDAL, HDF5, NetCDF, Qt, R,
-BioConductor, system BLAS variants, legacy scientific binaries, and
-cross-language toolchains.
+uv is the default for Python-first projects, but conda-forge remains useful for
+non-Python native stacks such as GDAL, HDF5, NetCDF, R, Qt, compiler variants,
+and legacy scientific binaries. This is why `conda` remains an optional feature
+rather than a core dependency.
 
-## Windows design
+## Windows model
 
-When WSL2 is available, Windows is used as the desktop host and the AI/ML
-environment is created inside WSL2 Ubuntu. This avoids most Windows-native
-CUDA, compiler, and symlink/path issues.
+Windows remains separate because its platform constraints differ:
 
-When WSL2 is blocked or broken, the native Windows backend is the fallback. It
-defaults to `minimal,ai`, checks for existing commands before installing
-packages, shows WinGet progress by default, and allows project/cache/tool paths
-to be placed outside the default `C:\Users` tree.
+- preferred: Windows host + WSL2 Ubuntu for Linux/CUDA-oriented development;
+- fallback: native Windows when WSL is unavailable or blocked;
+- CUDA Toolkit, native compilers, containers, and MLsys tooling remain explicit
+  features rather than universal defaults.
 
-## macOS design
+## Restricted profile
 
-macOS is treated as a lightweight developer host and remote-server control
-plane by default.
-
-```text
-minimal/core -> host apps, SSH/Git, editor, coding agents, Ollama, uv,
-                Ghostty TokyoNight baseline, zsh history/completion
-
-developer    -> minimal + Starship Jetpack, zoxide, fzf, typing helpers,
-                common repository CLI tools
-
-workstation  -> developer + local native-build and Docker-compatible tools
-
-restricted   -> conservative host/Ghostty/zsh variant without public AI apps
-                or Ollama
-```
-
-Ghostty explicitly launches `/bin/zsh -l`. This gives the profile deterministic
-shell behaviour even when an enterprise directory account still advertises
-`/bin/bash`, without changing the account-wide login shell.
-
-The default visual pairing is TokyoNight Moon/Day with Starship Jetpack. The
-optional `devtheme` helper coordinates a small set of alternative Ghostty and
-Starship presets, but the bootstrap preserves the active selection on reruns.
-
-The profiles do not install Python, PyTorch, MLX, Jupyter, conda, model weights,
-VS Code extensions, Oh My Zsh, or Powerlevel10k. Each project owns language and
-ML dependencies through `pyproject.toml`, `uv.lock`, or a project-specific
-conda definition.
-
-`personal` and `enterprise` remain compatibility aliases for `minimal` and
-`restricted`. See [MACOS_PROFILES.md](MACOS_PROFILES.md) and
-[MACOS_TERMINAL.md](MACOS_TERMINAL.md).
-
-## Enterprise/restricted design
-
-The restricted profile is not a legal guarantee. It is a safer host default:
-
-- no automatic installation of ChatGPT, Claude Code, or Ollama;
-- no token setup or application login;
-- no automatic model downloads;
-- no Python project or public package-index configuration;
-- room for organization-approved internal mirrors and applications.
-
-The existing environment policy files remain available for Windows/WSL and
-legacy project bootstrap workflows:
-
-- W&B offline mode;
-- MLflow local file tracking;
-- Hugging Face telemetry disabled;
-- conda-forge + nodefaults guidance;
-- private PyPI/conda mirror placeholders.
+`restricted` changes the application policy, not the terminal quality. It omits
+ChatGPT, Claude Code, and Ollama while retaining the open-source terminal/editor
+baseline. It is not a legal or technical compliance guarantee; internal
+mirrors, network controls, allowlists, and license review remain organizational
+responsibilities.
