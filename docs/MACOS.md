@@ -1,57 +1,53 @@
 # macOS setup
 
-The macOS bootstrap has three concepts:
+The macOS bootstrap has only three concepts:
 
 ```text
-profile  = application policy
-feature  = optional host capability
-project  = owns Python and ML dependencies
+core     shared development host baseline
+feature  optional host capability
+project  owns Python, frameworks, environments, and lockfiles
 ```
 
 The public interface is intentionally small:
 
 ```text
-profiles: core, enterprise
-features: ml, mlsys, containers
+features: ai, mlsys, containers
 ```
+
+There are no profiles or tiered setup levels.
 
 ## Recommended commands
 
 Personal Apple Silicon Mac:
 
 ```bash
-./scripts/bootstrap-macos.sh
+./scripts/bootstrap-macos.sh --features ai
 ```
 
-Enterprise-managed machine:
+Enterprise-managed or public-AI-restricted machine:
 
 ```bash
-./scripts/bootstrap-macos.sh --profile enterprise
+./scripts/bootstrap-macos.sh
 ```
 
 Optional host tooling:
 
 ```bash
-./scripts/bootstrap-macos.sh --features ml
 ./scripts/bootstrap-macos.sh --features mlsys
 ./scripts/bootstrap-macos.sh --features containers
-./scripts/bootstrap-macos.sh --features ml,mlsys,containers
+./scripts/bootstrap-macos.sh --features ai,mlsys
+./scripts/bootstrap-macos.sh --features all
 ```
 
-## Profiles
+## Core
 
-### `core`
-
-The daily personal baseline:
+Core is installed by every invocation:
 
 ```text
 Homebrew + Brewfile
 Ghostty + macOS OpenSSH + tmux
 Apple Command Line Tools Git + gh + Git LFS
 VS Code
-ChatGPT desktop / Codex
-Claude Code CLI
-Ollama App
 uv + btop
 Starship + zoxide + fzf
 ripgrep + fd + jq + yq + bat + ShellCheck + just
@@ -61,54 +57,64 @@ zsh-autosuggestions + zsh-syntax-highlighting
 Git and OpenSSH are supplied by macOS / Apple Command Line Tools and are not
 reinstalled through Homebrew.
 
-Internally, the profile composes two manifests:
+Core deliberately excludes:
 
 ```text
-core.Brewfile      shared terminal/editor/repository baseline
-personal.Brewfile  ChatGPT, Claude Code, and Ollama
+public AI applications
+local model runtimes
+containers
+native ML systems build tools
+Python and project environments
 ```
-
-### `enterprise`
-
-Uses `core.Brewfile` but omits `personal.Brewfile`. The terminal, editor, uv,
-and open-source CLI experience remains the same; only these applications are
-excluded:
-
-```text
-ChatGPT
-Claude Code
-Ollama
-```
-
-This is a conservative default, not a compliance guarantee. Organization-owned
-allowlists, mirrors, credentials, network controls, and model/data license
-review remain separate responsibilities.
 
 ## Features
 
-The features are independent. None of them creates a Python environment or
-installs a Python ML framework.
+### `ai`
 
-### `ml`
-
-Model-facing tools for local work:
-
-```text
-llama.cpp
-FFmpeg
+```bash
+./scripts/bootstrap-macos.sh --features ai
 ```
 
-Ollama remains the simple default runtime in the personal `core` profile.
-`llama.cpp` is optional for direct GGUF control, benchmarking, server flags,
-and lower-level experimentation. FFmpeg supports audio/video preprocessing for
-multimodal workflows.
+Installs exactly:
 
-The feature does not install MLX, PyTorch, Transformers, Jupyter, or a starter
-project.
+```text
+ChatGPT desktop / Codex
+Claude Code CLI
+Ollama App
+```
+
+This is the recommended personal setup. It installs applications only and does
+not sign in, write credentials, download an Ollama model, or create a project.
+
+#### Why Ollama, not llama.cpp by default?
+
+Both can run local models, so installing both in a simple host bootstrap is
+mostly redundant.
+
+Ollama is selected because it provides the higher-level workflow needed here:
+
+```text
+model download and storage
+simple CLI and desktop app
+local HTTP API
+coding-agent integrations
+minimal runtime configuration
+```
+
+`llama.cpp` is a lower-level inference toolkit. Install it separately only when
+you need direct GGUF file handling, conversion or quantization, detailed server
+flags, kernel/runtime experiments, or its benchmark tools.
+
+FFmpeg is not part of `ai`; multimedia preprocessing belongs to a project or a
+future narrowly scoped feature when a real need appears.
 
 ### `mlsys`
 
-Systems-facing tools for ML engineering:
+```bash
+./scripts/bootstrap-macos.sh --features mlsys
+```
+
+Installs:
 
 ```text
 CMake
@@ -117,14 +123,19 @@ pkgconf
 hyperfine
 ```
 
-This feature supports native-extension builds and repeatable command-level
-benchmarks. Framework-specific profilers such as `torch.profiler`, TensorBoard,
-Memray, or Scalene remain project dependencies because their versions should be
-locked with the code they measure.
+This feature is systems-facing rather than model-facing. It supports native
+extension builds, runtime/component compilation, and repeatable command-level
+benchmarks.
 
-`mlsys` does not imply `ml`, and `ml` does not imply `mlsys`.
+It does not install Python, PyTorch, MLX, Jupyter, ONNX Runtime, TensorBoard, or
+profiling packages. Those versions must remain aligned with the repository that
+uses them.
 
 ### `containers`
+
+```bash
+./scripts/bootstrap-macos.sh --features containers
+```
 
 Installs:
 
@@ -135,28 +146,28 @@ Docker Compose
 ```
 
 It does not start Colima, create a VM, change Docker context, pull an image, or
-start a container.
+run a container.
 
 ### `all`
 
 Equivalent to:
 
 ```bash
-./scripts/bootstrap-macos.sh --features ml,mlsys,containers
+./scripts/bootstrap-macos.sh --features ai,mlsys,containers
 ```
 
 ## Project environments
 
-The host installs uv, but it does not create a Python environment.
+The host installs uv but never creates a Python environment.
 
-For an existing project:
+Existing project:
 
 ```bash
 cd project
 uv sync
 ```
 
-For a new project:
+New project:
 
 ```bash
 uv init --python 3.12 my-project
@@ -164,16 +175,12 @@ cd my-project
 uv add numpy pandas scikit-learn
 ```
 
-Add PyTorch, MLX, Jupyter, profiling packages, or other dependencies only when
-that repository requires them. This keeps local, remote, and CI environments
-reproducible from project files rather than machine state.
-
-Miniforge/conda/mamba are not part of the personal Mac interface. Install them
-manually only when a specific repository explicitly requires conda.
+Add PyTorch, MLX, Jupyter, Transformers, serving packages, or profilers only when
+that repository requires them. This keeps the Mac host small and lets local,
+remote, and CI environments reproduce from project files instead of machine
+history.
 
 ## Terminal baseline
-
-Both profiles receive the same ready-to-use configuration.
 
 ### Ghostty
 
@@ -237,8 +244,8 @@ devtheme catppuccin
 devtheme gruvbox
 ```
 
-An explicit switch backs up a custom active Starship config before replacing it.
-After switching, press `Cmd+Shift+,` in Ghostty.
+An explicit switch backs up a custom active Starship configuration before
+replacing it. Press `Cmd+Shift+,` in Ghostty after switching.
 
 ## Repeatability and ownership
 
@@ -250,32 +257,18 @@ The bootstrap is safe to rerun:
 - unmanaged or symlinked Ghostty files are preserved and receive a review candidate;
 - `appearance.ghostty` is installed only when missing;
 - `local.ghostty` is never managed;
-- only repository-marked zsh blocks are replaced;
-- old minimal/developer blocks migrate to the single core block;
-- active Ghostty/Starship theme choices survive reruns.
+- only the repository-marked zsh block is replaced;
+- active Ghostty and Starship theme choices survive reruns.
 
 Useful controls:
 
 ```bash
-./scripts/bootstrap-macos.sh --dry-run
-./scripts/bootstrap-macos.sh --upgrade
-./scripts/bootstrap-macos.sh --skip-config
-./scripts/bootstrap-macos.sh --force-config
-./scripts/configure-macos-shell.sh --profile core
+./scripts/bootstrap-macos.sh --features ai --dry-run
+./scripts/bootstrap-macos.sh --features ai --upgrade
+./scripts/bootstrap-macos.sh --features ai --skip-config
+./scripts/bootstrap-macos.sh --features ai --force-config
+./scripts/configure-macos-shell.sh
 ```
-
-## Compatibility names
-
-The implementation accepts these previous profile names during migration:
-
-```text
-minimal, developer, personal -> core
-restricted                  -> enterprise
-workstation                 -> core + mlsys,containers
-```
-
-The old Mac features `ai`, `conda`, and `build` fail with a migration message.
-`mlsys` remains a first-class feature and is deliberately distinct from `ml`.
 
 ## Validation
 
@@ -283,6 +276,6 @@ The old Mac features `ai`, `conda`, and `build` fail with a migration message.
 make verify-macos
 ```
 
-The GitHub Actions workflow runs static and integration checks on both Linux and
-macOS, including repeatability, old-block migration, theme switching, and user
-configuration preservation.
+GitHub Actions runs static and integration checks on Linux and macOS, including
+manifest boundaries, repeatability, theme switching, and user configuration
+preservation.
