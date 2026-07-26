@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE="core"
 DRY_RUN=0
 FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,24 +10,17 @@ usage() {
 Usage: ./scripts/configure-macos-shell.sh [options]
 
 Options:
-  --profile core|enterprise
   --force-config  Back up and replace an unmanaged Ghostty main config.
   --dry-run       Print intended changes without writing files.
   -h, --help      Show this help.
 
-Both profiles use the same reliable Ghostty, zsh, Starship, navigation, and
-interactive-shell baseline. The profile difference is application policy, not a
-second terminal configuration tier.
+Installs one reliable Ghostty, zsh, Starship, navigation, and interactive-shell
+configuration. It modifies only repository-managed files or marked zsh blocks.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)
-      [[ $# -ge 2 ]] || { echo "--profile requires a value" >&2; exit 2; }
-      PROFILE="$2"
-      shift 2
-      ;;
     --force-config)
       FORCE_CONFIG=1
       shift
@@ -48,13 +40,6 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
-
-case "$PROFILE" in
-  core|enterprise) ;;
-  minimal|developer|personal|workstation) PROFILE="core" ;;
-  restricted) PROFILE="enterprise" ;;
-  *) echo "Unknown macOS profile: $PROFILE" >&2; exit 2 ;;
-esac
 
 if [[ "$(uname -s)" != "Darwin" && "${AI_ML_BOOTSTRAP_TEST:-0}" != "1" ]]; then
   echo "This configurator is intended for macOS." >&2
@@ -145,20 +130,6 @@ marker_count() {
   grep -Fc "$2" "$1" 2>/dev/null || true
 }
 
-validate_markers() {
-  local file="$1"
-  local name
-  for name in macos-core macos-minimal macos-developer; do
-    local starts ends
-    starts="$(marker_count "$file" "# >>> ai-ml-dev-bootstrap:${name} >>>")"
-    ends="$(marker_count "$file" "# <<< ai-ml-dev-bootstrap:${name} <<<")"
-    if [[ "$starts" != "$ends" ]]; then
-      echo "Malformed ai-ml-dev-bootstrap block markers in $file: $name" >&2
-      exit 1
-    fi
-  done
-}
-
 configure_zshrc() {
   local zshrc="$HOME/.zshrc"
   local template="$REPO_ROOT/config/macos/zsh/core.zsh"
@@ -173,25 +144,26 @@ configure_zshrc() {
 
   [[ -s "$zshrc" || -L "$zshrc" ]] && had_content=1
   touch "$zshrc"
-  validate_markers "$zshrc"
+
+  local starts ends
+  starts="$(marker_count "$zshrc" '# >>> ai-ml-dev-bootstrap:macos-core >>>')"
+  ends="$(marker_count "$zshrc" '# <<< ai-ml-dev-bootstrap:macos-core <<<')"
+  if [[ "$starts" != "$ends" ]]; then
+    echo "Malformed ai-ml-dev-bootstrap block markers in $zshrc" >&2
+    exit 1
+  fi
 
   local stripped tmp
   stripped="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc-stripped.XXXXXX")"
   tmp="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc.XXXXXX")"
 
-  # Remove the current core block and both blocks from the previous profile
-  # design, while preserving all unmarked user content.
   awk '
     $0 == "# >>> ai-ml-dev-bootstrap:macos-core >>>" { skip = 1; next }
     $0 == "# <<< ai-ml-dev-bootstrap:macos-core <<<" { skip = 0; next }
-    $0 == "# >>> ai-ml-dev-bootstrap:macos-minimal >>>" { skip = 1; next }
-    $0 == "# <<< ai-ml-dev-bootstrap:macos-minimal <<<" { skip = 0; next }
-    $0 == "# >>> ai-ml-dev-bootstrap:macos-developer >>>" { skip = 1; next }
-    $0 == "# <<< ai-ml-dev-bootstrap:macos-developer <<<" { skip = 0; next }
     !skip { print }
   ' "$zshrc" > "$stripped"
 
-  # Trim only trailing blank lines from unowned content, then append one block.
+  # Trim only trailing blank lines from user-owned content.
   awk '
     { lines[NR] = $0 }
     END {
@@ -232,7 +204,7 @@ configure_starship() {
   fi
 
   command -v starship >/dev/null 2>&1 || {
-    echo "core profile requires starship, but it is not on PATH" >&2
+    echo "core requires starship, but it is not on PATH" >&2
     exit 1
   }
 
@@ -271,6 +243,6 @@ configure_starship
 configure_zshrc
 
 if [[ "$DRY_RUN" != "1" ]]; then
-  log "configuration complete for profile=$PROFILE"
+  log "configuration complete"
   log "restart Ghostty, or press Cmd+Shift+, to reload reloadable settings"
 fi
