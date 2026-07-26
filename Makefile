@@ -1,4 +1,4 @@
-.PHONY: mac-core mac-enterprise mac-ml mac-containers mac-all mac-config verify verify-macos verify-project docker-cpu docker-gpu
+.PHONY: mac-core mac-enterprise mac-ml mac-mlsys mac-containers mac-all mac-config verify verify-macos verify-project docker-cpu docker-gpu
 
 mac-core:
 	./scripts/bootstrap-macos.sh
@@ -8,6 +8,9 @@ mac-enterprise:
 
 mac-ml:
 	./scripts/bootstrap-macos.sh --features ml
+
+mac-mlsys:
+	./scripts/bootstrap-macos.sh --features mlsys
 
 mac-containers:
 	./scripts/bootstrap-macos.sh --features containers
