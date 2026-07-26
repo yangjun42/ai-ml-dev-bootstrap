@@ -90,7 +90,9 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-if [[ -d "$PROJECT_DIR" && -n "$(find "$PROJECT_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" && ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
+# BSD find on macOS does not provide GNU -mindepth/-maxdepth flags. `ls -A`
+# is sufficient here because the path is quoted and only emptiness matters.
+if [[ -d "$PROJECT_DIR" && -n "$(ls -A "$PROJECT_DIR" 2>/dev/null)" && ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
   echo "Refusing to populate a non-empty directory without pyproject.toml: $PROJECT_DIR" >&2
   exit 1
 fi
