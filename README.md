@@ -6,7 +6,7 @@ Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 
 - **主机与项目分离**：装机脚本只管理通用软件和主机配置。
 - **uv-first**：Python、虚拟环境、框架和依赖由各项目自行声明。
-- **少量正交概念**：macOS 只有两个 profile 和三个可选 feature。
+- **少量正交模块**：macOS 只有一个 `core`，另有三个可选 feature。
 - **安全重复执行**：已满足的软件跳过，个人未托管配置不静默覆盖。
 
 > 本仓库不替代组织的安全、合规和许可证审查。
@@ -15,29 +15,28 @@ Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 
 ## macOS
 
-### 最简单的用法
+### 推荐安装
 
 个人 Apple Silicon Mac：
 
 ```bash
 git clone https://github.com/yangjun42/ai-ml-dev-bootstrap.git
 cd ai-ml-dev-bootstrap
+./scripts/bootstrap-macos.sh --features ai
+```
+
+企业或受限设备通常只安装共享开发基线：
+
+```bash
 ./scripts/bootstrap-macos.sh
 ```
 
-企业设备：
+额外需要 ML systems 或容器工具时：
 
 ```bash
-./scripts/bootstrap-macos.sh --profile enterprise
-```
-
-按需增加主机能力：
-
-```bash
-./scripts/bootstrap-macos.sh --features ml
-./scripts/bootstrap-macos.sh --features mlsys
+./scripts/bootstrap-macos.sh --features ai,mlsys
 ./scripts/bootstrap-macos.sh --features containers
-./scripts/bootstrap-macos.sh --features ml,mlsys,containers
+./scripts/bootstrap-macos.sh --features all
 ```
 
 全新 Mac 尚未安装 Apple Command Line Tools 时，脚本会请求安装；也可以预先执行：
@@ -46,41 +45,24 @@ cd ai-ml-dev-bootstrap
 xcode-select --install
 ```
 
-### 模型
+### 设计模型
 
 ```text
-profile  = 应用策略
+core     = 所有开发机器共享的主机与终端基线
 feature  = 可选主机能力
-project  = 自己管理 Python/ML 环境
+project  = 自己管理 Python、框架、环境和锁文件
 ```
-
-正式 profile 只有：
-
-| profile | 用途 |
-|---|---|
-| `core` | 默认个人开发主机，包含 ChatGPT/Codex、Claude Code 和 Ollama |
-| `enterprise` | 相同的开源终端/编辑器基线，但不安装上述公共 AI 应用和本地模型运行时 |
 
 正式 feature 只有：
 
 | feature | 内容 |
 |---|---|
-| `ml` | `llama.cpp`、FFmpeg；面向本地模型运行和多媒体数据处理 |
-| `mlsys` | CMake、Ninja、pkgconf、hyperfine；面向编译、系统与性能工程 |
-| `containers` | Colima、Docker CLI、Docker Compose；不自动启动 Colima |
-| `all` | `ml,mlsys,containers` |
+| `ai` | ChatGPT/Codex、Claude Code、Ollama App |
+| `mlsys` | CMake、Ninja、pkgconf、hyperfine |
+| `containers` | Colima、Docker CLI、Docker Compose；不自动启动 |
+| `all` | `ai,mlsys,containers` |
 
-三者都不会安装 Python、创建虚拟环境或安装 PyTorch/MLX 等框架。
-
-旧 profile 名称仅作为迁移别名：
-
-```text
-minimal, developer, personal -> core
-restricted                  -> enterprise
-workstation                 -> core + mlsys,containers
-```
-
-旧 `ai`、`conda`、`build` feature 已移除。Mac 主机 bootstrap 不再创建 starter project，也不安装 Miniforge。`mlsys` 保留为独立能力，不与 `ml` 混用。
+没有 profile、level 或旧名称兼容层。
 
 ### `core` 包含什么
 
@@ -89,9 +71,6 @@ Homebrew + Brewfile
 Ghostty + macOS OpenSSH + tmux
 Apple Command Line Tools Git + gh + Git LFS
 VS Code
-ChatGPT desktop / Codex
-Claude Code CLI
-Ollama App
 uv + btop
 Starship + zoxide + fzf
 ripgrep + fd + jq + yq + bat + ShellCheck + just
@@ -111,6 +90,58 @@ Shell         : /bin/zsh -l
 
 Ghostty 显式启动 zsh，因此目录服务账户即使仍记录 `/bin/bash`，也能正确读取 `~/.zshrc`。
 
+### `ai`
+
+```bash
+./scripts/bootstrap-macos.sh --features ai
+```
+
+只安装：
+
+```text
+ChatGPT desktop / Codex
+Claude Code CLI
+Ollama App
+```
+
+不会自动：
+
+```text
+登录账户
+写入 API key
+下载 Ollama 模型
+安装 llama.cpp
+创建 Python 环境
+安装 PyTorch、MLX、Jupyter 或 Transformers
+```
+
+Ollama 是默认本地模型运行器。`llama.cpp` 与其本地推理功能高度重叠，只在需要直接操作 GGUF、量化、底层 server 参数或专项 benchmark 时再单独安装。
+
+### `mlsys`
+
+```bash
+./scripts/bootstrap-macos.sh --features mlsys
+```
+
+安装：
+
+```text
+CMake
+Ninja
+pkgconf
+hyperfine
+```
+
+用于 native extension 构建、底层组件编译和可重复命令 benchmark。Python profiling、PyTorch Profiler、ONNX Runtime 等仍由具体项目管理。
+
+### `containers`
+
+```bash
+./scripts/bootstrap-macos.sh --features containers
+```
+
+安装 Colima、Docker CLI 和 Docker Compose，但不会启动虚拟机、修改 Docker context、拉取镜像或创建容器。
+
 ### 主题切换
 
 ```bash
@@ -127,18 +158,7 @@ devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 
 ### Python / ML 项目
 
-装机脚本不会自动执行以下操作：
-
-```text
-安装 Python
-创建 .venv 或 starter project
-安装 PyTorch、MLX、Jupyter、Transformers
-安装 Miniforge / conda / mamba
-下载 Ollama 模型
-安装 VS Code 插件
-```
-
-项目自己管理环境：
+装机脚本不会安装 Python、创建 `.venv` 或 starter project。项目自己管理环境：
 
 ```bash
 cd project
@@ -153,25 +173,25 @@ cd my-project
 uv add numpy pandas scikit-learn
 ```
 
-需要 PyTorch、MLX 或其他框架时，仅在该项目中添加。
+需要 PyTorch、MLX、Jupyter、profiling 或 serving 工具时，仅在对应项目中添加。
 
 ### 安全与幂等
 
 ```bash
 # 查看计划
-./scripts/bootstrap-macos.sh --dry-run
+./scripts/bootstrap-macos.sh --features ai --dry-run
 
 # 显式允许升级 Homebrew 软件
-./scripts/bootstrap-macos.sh --upgrade
+./scripts/bootstrap-macos.sh --features ai --upgrade
 
-# 只装软件，不修改 Ghostty/zsh
-./scripts/bootstrap-macos.sh --skip-config
+# 只安装软件，不修改 Ghostty/zsh
+./scripts/bootstrap-macos.sh --features ai --skip-config
 
 # 备份并采用仓库的 Ghostty 主配置
-./scripts/bootstrap-macos.sh --force-config
+./scripts/bootstrap-macos.sh --features ai --force-config
 
 # 只更新终端配置
-./scripts/configure-macos-shell.sh --profile core
+./scripts/configure-macos-shell.sh
 ```
 
 脚本会：
@@ -179,7 +199,6 @@ uv add numpy pandas scikit-learn
 - 先运行 `brew bundle check`，已满足的 manifest 整体跳过；
 - 默认使用 `--no-upgrade`；
 - 只维护 `.zshrc` 中带 marker 的 `macos-core` block；
-- 自动迁移旧的 `macos-minimal` / `macos-developer` blocks；
 - 保留未标记的个人配置；
 - 不覆盖未托管或 symlink 的 Ghostty 配置，而是生成 review candidate；
 - 不在重复执行时重置主题或 Starship 选择。
@@ -221,15 +240,14 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 make verify-macos
 ```
 
-macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、旧配置迁移、重复执行、主题切换和用户配置保留。
+macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、重复执行、主题切换和用户配置保留。
 
 ## 目录结构
 
 ```text
 brewfiles/macos/
   core.Brewfile
-  personal.Brewfile
-  ml.Brewfile
+  ai.Brewfile
   mlsys.Brewfile
   containers.Brewfile
 
