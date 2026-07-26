@@ -17,7 +17,6 @@ done
 for executable in \
   scripts/bootstrap-macos.sh \
   scripts/configure-macos-shell.sh \
-  scripts/setup-macos-ai.sh \
   scripts/test-macos-configure.sh \
   config/macos/bin/devtheme; do
   test -x "$executable"
