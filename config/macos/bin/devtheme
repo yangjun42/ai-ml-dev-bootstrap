@@ -81,7 +81,7 @@ case "$PROFILE" in
 esac
 
 if ! command -v starship >/dev/null 2>&1; then
-  echo "starship is required. Install the macOS core profile first." >&2
+  echo "starship is required. Install the macOS core module first." >&2
   exit 1
 fi
 
@@ -118,7 +118,7 @@ ln -sfn "$PRESET_FILE" "$STARSHIP_ACTIVE"
 
 TMP_APPEARANCE="$(mktemp "$GHOSTTY_DIR/.appearance.XXXXXX")"
 cat > "$TMP_APPEARANCE" <<EOF
-# Selected by devtheme. Run devtheme current to inspect the active pairing.
+a# Selected by devtheme. Run devtheme current to inspect the active pairing.
 theme = $GHOSTTY_THEME
 EOF
 mv "$TMP_APPEARANCE" "$GHOSTTY_APPEARANCE"
