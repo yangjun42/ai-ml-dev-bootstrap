@@ -92,8 +92,8 @@ if [[ "$REFRESH" == "1" || ! -s "$PRESET_FILE" ]]; then
   starship preset "$STARSHIP_PRESET" -o "$PRESET_FILE"
 fi
 
-# Switching is explicit, so replacing the active Starship config is expected;
-# preserve a custom file or external symlink before the first switch.
+# An explicit switch may replace a custom file or an external symlink. Preserve
+# its original content once; repeated switching never creates backup clutter.
 BACKUP_ACTIVE=0
 if [[ -e "$STARSHIP_ACTIVE" || -L "$STARSHIP_ACTIVE" ]]; then
   if [[ -L "$STARSHIP_ACTIVE" ]]; then
@@ -108,9 +108,15 @@ fi
 
 if [[ "$BACKUP_ACTIVE" == "1" ]]; then
   mkdir -p "$BACKUP_ROOT"
-  BACKUP_FILE="$BACKUP_ROOT/starship.toml.$(date +%Y%m%d-%H%M%S)"
-  cp -pL "$STARSHIP_ACTIVE" "$BACKUP_FILE"
-  printf 'Backed up custom Starship config: %s\n' "$BACKUP_FILE"
+  BACKUP_FILE="$BACKUP_ROOT/starship.toml.original"
+  if [[ ! -e "$BACKUP_FILE" && ! -L "$BACKUP_FILE" ]]; then
+    if [[ -L "$STARSHIP_ACTIVE" && ! -e "$STARSHIP_ACTIVE" ]]; then
+      printf 'broken symlink -> %s\n' "$(readlink "$STARSHIP_ACTIVE")" > "$BACKUP_FILE"
+    else
+      cp -pL "$STARSHIP_ACTIVE" "$BACKUP_FILE"
+    fi
+    printf 'One-time backup: %s\n' "$BACKUP_FILE"
+  fi
 fi
 
 ln -sfn "$PRESET_FILE" "$STARSHIP_ACTIVE"
