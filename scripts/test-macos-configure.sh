@@ -96,12 +96,14 @@ command = /bin/zsh -l
 theme = manual-old-theme
 font-size = 16
 EOF
+printf 'theme = xdg-legacy-config\n' > "$MIGRATION_HOME/.config/ghostty/config"
 cat > "$MIGRATION_HOME/.config/ghostty/appearance.ghostty" <<'EOF'
 theme = dark:TokyoNight Moon,light:TokyoNight Day
 EOF
 printf 'font-size = 15\n' > "$MIGRATION_HOME/.config/ghostty/local.ghostty"
 printf 'alias local-only="echo local"\n' > "$MIGRATION_HOME/.config/zsh/local.zsh"
-printf 'theme = duplicate-late-config\n' > "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+printf 'theme = macos-current-config\n' > "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+printf 'theme = macos-legacy-config\n' > "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty/config"
 printf 'custom = true\n' > "$MIGRATION_HOME/.config/starship.toml"
 cat > "$MIGRATION_HOME/.zshrc" <<'EOF'
 export USER_SETTING=kept
@@ -118,9 +120,13 @@ configure "$MIGRATION_HOME"
 cmp -s "$REPO_ROOT/config/macos/zsh/core.zsh" "$MIGRATION_HOME/.zshrc"
 grep -Fq 'command = /bin/zsh -l' "$MIGRATION_HOME/.config/ghostty/config.ghostty"
 grep -Fq 'theme = manual-old-theme' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/config.ghostty.original"
+grep -Fq 'xdg-legacy-config' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/ghostty-xdg-legacy-config.original"
+grep -Fq 'macos-current-config' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-config.original"
+grep -Fq 'macos-legacy-config' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-legacy-config.original"
 grep -Fq 'export USER_SETTING=kept' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/zshrc.original"
-grep -Fq 'duplicate-late-config' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-config.original"
+test ! -e "$MIGRATION_HOME/.config/ghostty/config"
 test ! -e "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+test ! -e "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty/config"
 grep -Fq 'custom = true' "$MIGRATION_HOME/.config/starship.toml"
 grep -Fq 'TokyoNight Moon' "$MIGRATION_HOME/.config/ghostty/appearance.ghostty"
 grep -Fq 'font-size = 15' "$MIGRATION_HOME/.config/ghostty/local.ghostty"
