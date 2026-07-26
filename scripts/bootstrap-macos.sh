@@ -5,7 +5,6 @@ FEATURES_CSV=""
 DRY_RUN=0
 UPGRADE=0
 SKIP_CONFIG=0
-FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FEATURES=()
 
@@ -26,7 +25,6 @@ Options:
   --features LIST  Example: ai or ai,mlsys.
   --upgrade        Update Homebrew metadata and allow package upgrades.
   --skip-config    Install packages only; do not manage Ghostty/zsh files.
-  --force-config   Replace a symlinked Ghostty config after one-time backup.
   --dry-run        Print package and configuration actions without changing them.
   -h, --help       Show this help.
 
@@ -111,10 +109,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-config)
       SKIP_CONFIG=1
-      shift
-      ;;
-    --force-config)
-      FORCE_CONFIG=1
       shift
       ;;
     --dry-run)
@@ -246,7 +240,6 @@ done
 if [[ "$SKIP_CONFIG" != "1" ]]; then
   CONFIG_ARGS=()
   [[ "$DRY_RUN" == "1" ]] && CONFIG_ARGS+=(--dry-run)
-  [[ "$FORCE_CONFIG" == "1" ]] && CONFIG_ARGS+=(--force-config)
   bash "$REPO_ROOT/scripts/configure-macos-shell.sh" "${CONFIG_ARGS[@]}"
 else
   log "skipping Ghostty/zsh configuration by request"
@@ -257,7 +250,6 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-# Configure Git LFS filters globally, but do not modify any repository.
 if command -v git-lfs >/dev/null 2>&1; then
   git lfs install --skip-repo
 fi
@@ -282,7 +274,7 @@ Project ownership by design:
   - no PyTorch, MLX, Jupyter, profiling package, or other framework dependency
   - no Miniforge/conda environment
   - no VS Code extensions, account login, API key, SSH key, or model download
-  - no Oh My Zsh and no replacement of unmarked personal dotfiles
+  - no Oh My Zsh
 
 Use uv inside each repository, for example: uv sync
 EOF
@@ -291,7 +283,7 @@ if feature_enabled ai; then
   cat <<'EOF'
 
 AI applications are installed. Open Ollama once before using its CLI, sign in to
-ChatGPT/Codex and Claude Code as needed, and restart Ghostty for all shell settings.
+ChatGPT/Codex and Claude Code as needed, and restart Ghostty for shell settings.
 EOF
 else
   cat <<'EOF'
