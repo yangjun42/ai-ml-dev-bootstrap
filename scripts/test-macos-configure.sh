@@ -83,7 +83,7 @@ test "$(basename "$(readlink "$FRESH_HOME/.config/starship.toml")")" = "catppucc
 test "$(count_backups "$FRESH_HOME")" = "0"
 
 # Migrate an existing machine: adopt Ghostty and zsh once, preserve appearance,
-# local overrides, and an existing Starship configuration.
+# local overrides, an existing Starship config, and an already enabled zsh fix.
 MIGRATION_HOME="$TEST_ROOT/migration-home"
 mkdir -p \
   "$MIGRATION_HOME/.config/ghostty" \
@@ -92,6 +92,7 @@ mkdir -p \
   "$MIGRATION_HOME/Library/Application Support/com.mitchellh.ghostty"
 
 cat > "$MIGRATION_HOME/.config/ghostty/config.ghostty" <<'EOF'
+command = /bin/zsh -l
 theme = manual-old-theme
 font-size = 16
 EOF
@@ -115,6 +116,7 @@ EOF
 
 configure "$MIGRATION_HOME"
 cmp -s "$REPO_ROOT/config/macos/zsh/core.zsh" "$MIGRATION_HOME/.zshrc"
+grep -Fq 'command = /bin/zsh -l' "$MIGRATION_HOME/.config/ghostty/config.ghostty"
 grep -Fq 'theme = manual-old-theme' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/config.ghostty.original"
 grep -Fq 'export USER_SETTING=kept' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/zshrc.original"
 grep -Fq 'duplicate-late-config' "$MIGRATION_HOME/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-config.original"
@@ -128,6 +130,7 @@ backup_count_before="$(count_backups "$MIGRATION_HOME")"
 configure "$MIGRATION_HOME"
 backup_count_after="$(count_backups "$MIGRATION_HOME")"
 test "$backup_count_before" = "$backup_count_after"
+grep -Fq 'command = /bin/zsh -l' "$MIGRATION_HOME/.config/ghostty/config.ghostty"
 
 # An explicit theme switch backs up a custom Starship file exactly once.
 HOME="$MIGRATION_HOME" "$MIGRATION_HOME/.local/bin/devtheme" tokyo
