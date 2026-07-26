@@ -107,8 +107,23 @@ grep -Fq 'setup-macos-ai.sh' scripts/bootstrap-macos.sh
 grep -Fq 'install-miniforge.sh' scripts/bootstrap-macos.sh
 grep -Fq 'config/macos/zsh/core.zsh' scripts/configure-macos-shell.sh
 
+grep -Fq 'uv sync' scripts/setup-macos-ai.sh
 grep -Fq 'uv pip install' scripts/setup-macos-ai.sh
 grep -Fq 'requirements/mlsys.txt' scripts/setup-macos-ai.sh
+
+python3 - <<'PY'
+import pathlib
+import tomllib
+
+path = pathlib.Path("templates/ai-starter/pyproject.toml")
+with path.open("rb") as handle:
+    data = tomllib.load(handle)
+
+extras = data["project"]["optional-dependencies"]
+assert {"ai", "mlsys", "personal", "restricted"} <= set(extras)
+assert "dev" in data["dependency-groups"]
+assert data["tool"]["uv"]["package"] is False
+PY
 
 bash scripts/test-macos-configure.sh
 
