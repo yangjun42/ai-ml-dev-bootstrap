@@ -159,7 +159,7 @@ when that repository requires them.
 
 ### Ghostty
 
-The repository manages:
+The repository manages one primary file:
 
 ```text
 ~/.config/ghostty/config.ghostty
@@ -197,27 +197,31 @@ option:
 # command = /bin/zsh -l
 ```
 
-Uncomment it only when a directory-managed account still launches Bash and
-therefore does not read `~/.zshrc`. Shell integration remains automatic:
+A fresh install keeps it commented. If migration detects that any existing
+Ghostty config already enabled `command = /bin/zsh -l`, the generated managed
+file keeps it enabled. This avoids breaking directory-managed accounts that
+still launch Bash. Shell integration remains automatic:
 
 ```ini
 shell-integration = detect
 ```
 
-Ghostty may also read this later macOS-specific location:
+Ghostty supports both `config.ghostty` and the older filename `config`, in the
+XDG and macOS Application Support locations. Later files override earlier ones,
+so leaving more than one creates ambiguous precedence. The configurator keeps
+only the primary XDG file and removes these alternatives after one-time backup:
+
+| duplicate path | backup |
+|---|---|
+| `~/.config/ghostty/config` | `ghostty-xdg-legacy-config.original` |
+| `~/Library/Application Support/com.mitchellh.ghostty/config.ghostty` | `ghostty-macos-config.original` |
+| `~/Library/Application Support/com.mitchellh.ghostty/config` | `ghostty-macos-legacy-config.original` |
+
+All backups live under:
 
 ```text
-~/Library/Application Support/com.mitchellh.ghostty/config.ghostty
+~/.config/ai-ml-dev-bootstrap/backups/
 ```
-
-Keeping both paths creates ambiguous precedence. If that duplicate file exists,
-the configurator saves it once as:
-
-```text
-~/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-config.original
-```
-
-and removes the duplicate, leaving the XDG path as the single source of truth.
 
 ### zsh
 
@@ -305,9 +309,12 @@ The migration is deterministic:
 3. Only missing core or AI items are installed.
 4. Existing versions are not upgraded unless `--upgrade` is supplied.
 5. Ghostty and zsh are adopted once with fixed `.original` backups.
-6. A duplicate Ghostty macOS config path is removed after one-time backup.
-7. Existing Ghostty appearance, local overrides, and Starship config remain.
-8. Repeated runs produce no additional backups and no duplicate shell
+6. All legacy or later-priority Ghostty config paths are removed after one-time
+   backup, leaving one active source.
+7. An already enabled `/bin/zsh -l` Ghostty override is retained; a fresh setup
+   leaves it commented.
+8. Existing Ghostty appearance, local overrides, and Starship config remain.
+9. Repeated runs produce no additional backups and no duplicate shell
    initialization.
 
 The bootstrap does not uninstall unrelated software left from an older setup.
@@ -336,6 +343,6 @@ make verify-macos
 ```
 
 GitHub Actions runs static and integration checks on Linux and macOS. The suite
-covers manifest boundaries, shell syntax, one-time adoption, duplicate-config
-removal, repeated execution, theme switching, and preservation of explicit
-local overrides.
+covers manifest boundaries, shell syntax, one-time adoption, all Ghostty config
+precedence paths, repeated execution, theme switching, and preservation of
+explicit local overrides.
