@@ -1,4 +1,4 @@
-# Unified core Mac profile for daily software and AI development.
+# Core macOS development host.
 # macOS + Apple Command Line Tools provide Git and OpenSSH, so they are
 # intentionally not reinstalled through Homebrew.
 
