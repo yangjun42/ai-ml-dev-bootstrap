@@ -1,7 +1,5 @@
-# Optional AI applications and local open-model runtime.
-# Ollama is the single local inference runtime managed by this bootstrap.
-# Install llama.cpp separately only for low-level runtime development or direct
-# control over GGUF conversion, quantization, and engine-specific flags.
+# Optional AI applications for a personal developer Mac.
+# Installs applications only; no login, model download, or project environment.
 
 cask "chatgpt"
 cask "claude-code"
