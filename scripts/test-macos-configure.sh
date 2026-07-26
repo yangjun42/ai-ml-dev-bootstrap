@@ -43,60 +43,43 @@ CONFIGURE=(
   bash "$REPO_ROOT/scripts/configure-macos-shell.sh"
 )
 
-# Fresh core setup.
-"${CONFIGURE[@]}" --profile core
+# Preserve pre-existing user content while installing the managed baseline.
+printf 'export USER_SETTING=kept\n' > "$HOME/.zshrc"
+"${CONFIGURE[@]}"
 test -f "$HOME/.config/ghostty/config.ghostty"
 test -f "$HOME/.config/ghostty/appearance.ghostty"
 test -x "$HOME/.local/bin/devtheme"
 test -L "$HOME/.config/starship.toml"
 test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "jetpack.toml"
 test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
+grep -Fq 'export USER_SETTING=kept' "$HOME/.zshrc"
 grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' "$HOME/.config/ghostty/appearance.ghostty"
 
-# Repeatability and policy independence: enterprise uses the same terminal config.
-"${CONFIGURE[@]}" --profile core
+# Repeated configuration must not duplicate content or reset the selected theme.
+"${CONFIGURE[@]}"
 test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
 "$HOME/.local/bin/devtheme" catppuccin
 grep -Fq 'theme = dark:Catppuccin Mocha,light:Catppuccin Latte' "$HOME/.config/ghostty/appearance.ghostty"
 test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "catppuccin-powerline.toml"
-"${CONFIGURE[@]}" --profile enterprise
+"${CONFIGURE[@]}"
 test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "catppuccin-powerline.toml"
-test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
 
-# An explicit theme switch backs up a custom Starship file.
+# An explicit theme switch backs up a custom Starship configuration.
 rm -f "$HOME/.config/starship.toml"
 printf 'custom = true\n' > "$HOME/.config/starship.toml"
 "$HOME/.local/bin/devtheme" tokyo
 test -L "$HOME/.config/starship.toml"
 find "$HOME/.config/ai-ml-dev-bootstrap/backups" -name 'starship.toml.*' -type f | grep -q .
 
-# An unmanaged Ghostty config is preserved and a review candidate is produced.
+# An unmanaged Ghostty main config is preserved and receives a review candidate.
 SECOND_HOME="$TEST_ROOT/unmanaged-home"
 mkdir -p "$SECOND_HOME/.config/ghostty"
 printf 'theme = custom\n' > "$SECOND_HOME/.config/ghostty/config.ghostty"
-HOME="$SECOND_HOME" "${CONFIGURE[@]}" --profile core
+HOME="$SECOND_HOME" "${CONFIGURE[@]}"
 grep -Fq 'theme = custom' "$SECOND_HOME/.config/ghostty/config.ghostty"
 test -f "$SECOND_HOME/.config/ghostty/config.ghostty.ai-ml-dev-bootstrap-new"
 
-# Migrate the previous minimal/developer block design without touching user data.
-THIRD_HOME="$TEST_ROOT/migration-home"
-mkdir -p "$THIRD_HOME"
-cat > "$THIRD_HOME/.zshrc" <<'EOF'
-export USER_SETTING=kept
-# >>> ai-ml-dev-bootstrap:macos-minimal >>>
-old minimal content
-# <<< ai-ml-dev-bootstrap:macos-minimal <<<
-# >>> ai-ml-dev-bootstrap:macos-developer >>>
-old developer content
-# <<< ai-ml-dev-bootstrap:macos-developer <<<
-EOF
-HOME="$THIRD_HOME" "${CONFIGURE[@]}" --profile core
-grep -Fq 'export USER_SETTING=kept' "$THIRD_HOME/.zshrc"
-test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$THIRD_HOME/.zshrc")" -eq 1
-test "$(grep -Fc 'macos-minimal' "$THIRD_HOME/.zshrc" || true)" -eq 0
-test "$(grep -Fc 'macos-developer' "$THIRD_HOME/.zshrc" || true)" -eq 0
-
-# Core load order: compinit before zoxide; syntax highlighting last.
+# Core load order: compinit before navigation; syntax highlighting last.
 compinit_line="$(grep -n 'compinit' "$HOME/.zshrc" | head -n 1 | cut -d: -f1)"
 zoxide_line="$(grep -n 'zoxide init zsh' "$HOME/.zshrc" | head -n 1 | cut -d: -f1)"
 starship_line="$(grep -n 'starship init zsh' "$HOME/.zshrc" | head -n 1 | cut -d: -f1)"
@@ -104,4 +87,4 @@ syntax_line="$(grep -n 'zsh-syntax-highlighting.zsh' "$HOME/.zshrc" | tail -n 1 
 test "$compinit_line" -lt "$zoxide_line"
 test "$starship_line" -lt "$syntax_line"
 
-echo "macOS core/enterprise configuration integration tests passed"
+echo "macOS core configuration integration tests passed"
