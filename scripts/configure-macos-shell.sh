@@ -127,8 +127,14 @@ install_if_missing() {
   fi
 }
 
+has_explicit_zsh_command() {
+  local file="$1"
+  [[ -f "$file" || -L "$file" ]] || return 1
+  grep -Eq '^[[:space:]]*command[[:space:]]*=[[:space:]]*/bin/zsh[[:space:]]+-l[[:space:]]*$' "$file" 2>/dev/null
+}
+
 remove_duplicate_ghostty_config() {
-  local duplicate="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+  local duplicate="$1"
 
   [[ -e "$duplicate" || -L "$duplicate" ]] || return 0
 
@@ -145,6 +151,37 @@ remove_duplicate_ghostty_config() {
   backup_once "$duplicate" "ghostty-macos-config"
   rm -f "$duplicate"
   log "removed duplicate Ghostty config path: $duplicate"
+}
+
+configure_ghostty() {
+  local config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local ghostty_dir="$config_root/ghostty"
+  local target="$ghostty_dir/config.ghostty"
+  local template="$REPO_ROOT/config/macos/ghostty/config.ghostty"
+  local appearance="$ghostty_dir/appearance.ghostty"
+  local duplicate="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
+  local rendered
+  local preserve_explicit_zsh=0
+
+  if has_explicit_zsh_command "$target" || has_explicit_zsh_command "$duplicate"; then
+    preserve_explicit_zsh=1
+  fi
+
+  rendered="$(mktemp "${TMPDIR:-/tmp}/ai-ml-ghostty.XXXXXX")"
+  if [[ "$preserve_explicit_zsh" == "1" ]]; then
+    sed 's|^# command = /bin/zsh -l$|command = /bin/zsh -l|' "$template" > "$rendered"
+  else
+    cat "$template" > "$rendered"
+  fi
+
+  install_managed_file "$rendered" "$target"
+  rm -f "$rendered"
+  install_if_missing "$REPO_ROOT/config/macos/ghostty/appearance.ghostty" "$appearance"
+  remove_duplicate_ghostty_config "$duplicate"
+
+  if [[ "$preserve_explicit_zsh" == "1" ]]; then
+    log "preserved existing opt-in Ghostty zsh command"
+  fi
 }
 
 configure_starship() {
@@ -185,11 +222,7 @@ configure_starship() {
   install_managed_file "$REPO_ROOT/config/macos/bin/devtheme" "$HOME/.local/bin/devtheme" 0755
 }
 
-GHOSTTY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
-install_managed_file "$REPO_ROOT/config/macos/ghostty/config.ghostty" "$GHOSTTY_DIR/config.ghostty"
-install_if_missing "$REPO_ROOT/config/macos/ghostty/appearance.ghostty" "$GHOSTTY_DIR/appearance.ghostty"
-remove_duplicate_ghostty_config
-
+configure_ghostty
 configure_starship
 install_managed_file "$REPO_ROOT/config/macos/zsh/core.zsh" "$HOME/.zshrc"
 
