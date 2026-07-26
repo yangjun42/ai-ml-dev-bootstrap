@@ -104,7 +104,7 @@ if grep -Eq '^(brew|cask) "(llama\.cpp|ffmpeg)"$' brewfiles/macos/ai.Brewfile; t
   exit 1
 fi
 
-# Ghostty and unified zsh invariants.
+# Ghostty uses the normal login shell and documents the opt-in Bash workaround.
 grep -Fq '# command = /bin/zsh -l' config/macos/ghostty/config.ghostty
 grep -Fq 'shell-integration = detect' config/macos/ghostty/config.ghostty
 if grep -Eq '^[[:space:]]*command[[:space:]]*=' config/macos/ghostty/config.ghostty; then
@@ -116,18 +116,30 @@ grep -Fq 'auto-update = check' config/macos/ghostty/config.ghostty
 grep -Fq 'auto-update-channel = stable' config/macos/ghostty/config.ghostty
 grep -Fq 'config-file = ?appearance.ghostty' config/macos/ghostty/config.ghostty
 grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' config/macos/ghostty/appearance.ghostty
-grep -Fq '# >>> ai-ml-dev-bootstrap:macos-core >>>' config/macos/zsh/core.zsh
+
+# One complete zsh source of truth plus an explicit user override file.
+grep -Fq 'Managed by ai-ml-dev-bootstrap' config/macos/zsh/core.zsh
 grep -Fq '/opt/homebrew/bin/brew shellenv' config/macos/zsh/core.zsh
 grep -Fq 'zoxide init zsh' config/macos/zsh/core.zsh
 grep -Fq 'fzf --zsh' config/macos/zsh/core.zsh
 grep -Fq 'starship init zsh' config/macos/zsh/core.zsh
+grep -Fq '.config}/zsh/local.zsh' config/macos/zsh/core.zsh
 grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/core.zsh
+if grep -Fq 'ai-ml-dev-bootstrap:macos-' config/macos/zsh/core.zsh; then
+  echo "core zsh config must not retain marker-based tier blocks" >&2
+  exit 1
+fi
 
-# Adoption is one-time and old repository-owned zsh blocks migrate cleanly.
+# The configurator adopts each managed file once and removes duplicate Ghostty
+# config precedence instead of generating candidates or timestamped backups.
 grep -Fq 'backup_once()' scripts/configure-macos-shell.sh
-grep -Fq 'macos-minimal' scripts/configure-macos-shell.sh
-grep -Fq 'macos-developer' scripts/configure-macos-shell.sh
-grep -Fq 'preserved externally managed symlink' scripts/configure-macos-shell.sh
+grep -Fq '.original' scripts/configure-macos-shell.sh
+grep -Fq 'remove_duplicate_ghostty_config' scripts/configure-macos-shell.sh
+grep -Fq 'install_managed_file "$REPO_ROOT/config/macos/zsh/core.zsh" "$HOME/.zshrc"' scripts/configure-macos-shell.sh
+if grep -Eq -- '--force-config|ai-ml-dev-bootstrap-new|TIMESTAMP=|macos-minimal|macos-developer' scripts/configure-macos-shell.sh; then
+  echo "macOS configurator contains obsolete migration or repeated-backup logic" >&2
+  exit 1
+fi
 
 # Public interface: one core plus three orthogonal features.
 grep -Fq 'ai|mlsys|containers' scripts/bootstrap-macos.sh
@@ -139,17 +151,15 @@ grep -Fq 'bundle_is_satisfied' scripts/bootstrap-macos.sh
 grep -Fq 'configure-macos-shell.sh' scripts/bootstrap-macos.sh
 grep -Fq 'no Python installation or virtual environment' scripts/bootstrap-macos.sh
 
-if grep -Eq -- '--profile|PROFILE=|setup-macos-ai|install-miniforge|uv python install|uv pip install|llama\.cpp|ffmpeg' scripts/bootstrap-macos.sh; then
-  echo "macOS bootstrap contains a removed profile or environment/runtime path" >&2
-  exit 1
-fi
-
-if grep -Eq -- '--profile|PROFILE=' scripts/configure-macos-shell.sh; then
-  echo "macOS configurator must expose one shared core configuration" >&2
+if grep -Eq -- '--profile|PROFILE=|--force-config|setup-macos-ai|install-miniforge|uv python install|uv pip install|llama\.cpp|ffmpeg' scripts/bootstrap-macos.sh; then
+  echo "macOS bootstrap contains a removed profile, force, or environment/runtime path" >&2
   exit 1
 fi
 
 grep -Fq 'features: ai, mlsys, containers' docs/MACOS.md
+grep -Fq '# command = /bin/zsh -l' docs/MACOS.md
+grep -Fq 'zshrc.original' docs/MACOS.md
+grep -Fq 'ghostty-macos-config.original' docs/MACOS.md
 
 # Starter metadata remains generic and does not embed a machine-wide ML stack.
 python3 - <<'PY'
