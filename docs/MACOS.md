@@ -1,40 +1,47 @@
 # macOS setup
 
-The macOS design has one complete daily baseline and a small set of orthogonal
-features:
+The macOS bootstrap has three concepts:
 
 ```text
-profile:  core | restricted
-features: ai, conda, mlsys, build, containers
+profile  = application policy
+feature  = optional host capability
+project  = owns Python and ML dependencies
 ```
 
-This mirrors common developer-bootstrap practice: the profile expresses policy,
-while features express capabilities. It avoids several almost-identical setup
-levels and keeps each module independently understandable.
+The public interface is intentionally small:
 
-## Recommended setup
+```text
+profiles: core, enterprise
+features: ml, containers
+```
 
-For a personal Apple Silicon Mac used for local lightweight work and remote
-Linux/GPU development:
+## Recommended commands
+
+Personal Apple Silicon Mac:
 
 ```bash
 ./scripts/bootstrap-macos.sh
 ```
 
-This selects the `core` profile.
-
-For a machine where public AI applications or a local model runtime require
-separate approval:
+Enterprise-managed machine:
 
 ```bash
-./scripts/bootstrap-macos.sh --profile restricted
+./scripts/bootstrap-macos.sh --profile enterprise
+```
+
+Optional host tooling:
+
+```bash
+./scripts/bootstrap-macos.sh --features ml
+./scripts/bootstrap-macos.sh --features containers
+./scripts/bootstrap-macos.sh --features ml,containers
 ```
 
 ## Profiles
 
 ### `core`
 
-The default personal profile installs:
+The daily personal baseline:
 
 ```text
 Homebrew + Brewfile
@@ -50,13 +57,21 @@ ripgrep + fd + jq + yq + bat + ShellCheck + just
 zsh-autosuggestions + zsh-syntax-highlighting
 ```
 
-Git and OpenSSH come from macOS / Apple Command Line Tools and are not
+Git and OpenSSH are supplied by macOS / Apple Command Line Tools and are not
 reinstalled through Homebrew.
 
-### `restricted`
+Internally, the profile composes two manifests:
 
-Uses the same open-source terminal, editor, repository, and shell baseline, but
-omits:
+```text
+core.Brewfile      shared terminal/editor/repository baseline
+personal.Brewfile  ChatGPT, Claude Code, and Ollama
+```
+
+### `enterprise`
+
+Uses `core.Brewfile` but omits `personal.Brewfile`. The terminal, editor, uv,
+and open-source CLI experience remains the same; only these applications are
+excluded:
 
 ```text
 ChatGPT
@@ -64,45 +79,85 @@ Claude Code
 Ollama
 ```
 
-It is a conservative package policy, not a compliance guarantee. Internal
-mirrors, application allowlists, credentials, network controls, and model/data
-licenses remain organization responsibilities.
+This is a conservative default, not a compliance guarantee. Organization-owned
+allowlists, mirrors, credentials, network controls, and model/data license
+review remain separate responsibilities.
 
 ## Features
 
-Features are comma-separated and may be combined:
+### `ml`
 
-| feature | behavior |
-|---|---|
-| `ai` | creates or reuses one uv-managed local AI/ML starter project |
-| `conda` | installs Miniforge, including conda and mamba |
-| `mlsys` | adds `hyperfine` and Python profiling/runtime tools; implies `ai` |
-| `build` | installs CMake, Ninja, pkgconf, and FFmpeg |
-| `containers` | installs Colima and Docker-compatible CLI tooling without starting it |
-| `all` | enables every feature above |
+Installs generic host-side tools useful for ML engineering:
 
-Examples:
-
-```bash
-./scripts/bootstrap-macos.sh --features ai
-./scripts/bootstrap-macos.sh --features conda
-./scripts/bootstrap-macos.sh --features ai,mlsys
-./scripts/bootstrap-macos.sh --features build,containers
-./scripts/bootstrap-macos.sh --features all
+```text
+CMake
+Ninja
+pkgconf
+FFmpeg
+hyperfine
 ```
 
-The optional AI project location and Python version are configurable:
+It deliberately does **not** install:
+
+```text
+Python
+PyTorch / MLX / JAX / TensorFlow
+Jupyter
+Miniforge / conda / mamba
+an ai-ml-starter project
+```
+
+The feature exists for native-extension builds, media/data preprocessing, and
+repeatable command benchmarks. Framework and environment choices remain inside
+each repository.
+
+### `containers`
+
+Installs:
+
+```text
+Colima
+Docker CLI
+Docker Compose
+```
+
+It does not start Colima, create a VM, change Docker context, pull an image, or
+start a container.
+
+### `all`
+
+Equivalent to:
 
 ```bash
-./scripts/bootstrap-macos.sh \
-  --features ai,mlsys \
-  --python 3.12 \
-  --project-dir "$HOME/projects/ai-ml-starter"
+./scripts/bootstrap-macos.sh --features ml,containers
 ```
+
+## Project environments
+
+The host installs uv, but it does not create a Python environment.
+
+For an existing project:
+
+```bash
+cd project
+uv sync
+```
+
+For a new project:
+
+```bash
+uv init --python 3.12 my-project
+cd my-project
+uv add numpy pandas scikit-learn
+```
+
+Add PyTorch, MLX, Jupyter, or other packages only when that project's purpose
+requires them. This keeps the Mac host small and makes local, remote, and CI
+environments reproducible from project files rather than machine state.
 
 ## Terminal baseline
 
-Both profiles install the same ready-to-use terminal configuration.
+Both profiles receive the same ready-to-use configuration.
 
 ### Ghostty
 
@@ -116,126 +171,72 @@ Managed files:
 Defaults:
 
 ```text
-Ghostty dark theme  : TokyoNight Moon
-Ghostty light theme : TokyoNight Day
-Starship preset     : Jetpack
-Shell               : /bin/zsh -l
+Dark theme   TokyoNight Moon
+Light theme  TokyoNight Day
+Shell        /bin/zsh -l
+Updates      check stable channel
 ```
 
-The explicit zsh command is useful on directory-managed Macs whose account
-record still advertises `/bin/bash`; Ghostty reads `.zshrc` without requiring an
-account-wide `chsh` change.
+The explicit zsh command handles directory-managed accounts that still advertise
+`/bin/bash`, without changing the account-wide login shell.
 
-The Ghostty baseline also enables:
-
-- zsh and SSH/terminfo integration;
-- stable-channel update checks;
-- working-directory inheritance for tabs, windows, and splits;
-- bounded scrollback for build and agent output;
-- conservative clipboard/paste behavior;
-- left Option as terminal Alt;
-- close confirmation for active processes.
-
-Put machine-local overrides in:
-
-```text
-~/.config/ghostty/local.ghostty
-```
-
-For example:
-
-```ini
-font-size = 15
-```
-
-The bootstrap never creates or modifies that file.
+The baseline also configures SSH/terminfo integration, working-directory
+inheritance, bounded scrollback, secure input, clipboard protection, and an
+optional `local.ghostty` override.
 
 ### zsh
 
-The bootstrap owns only one marked block in `~/.zshrc`:
+The configurator maintains exactly one marked block in `~/.zshrc`:
 
-```text
+```zsh
 # >>> ai-ml-dev-bootstrap:macos-core >>>
 ...
 # <<< ai-ml-dev-bootstrap:macos-core <<<
 ```
 
-The block provides:
+It provides:
 
-- Homebrew PATH recovery on a fresh Apple Silicon Mac;
-- persistent/shared history in `~/.zsh_history`;
-- native completion;
-- zoxide and fzf integration;
-- Starship;
-- autosuggestions and syntax highlighting.
+```text
+Homebrew PATH recovery
+shared persistent history
+native completion
+Starship Jetpack
+zoxide
+fzf shell integration
+zsh-autosuggestions
+zsh-syntax-highlighting
+```
 
-Unmarked personal content is preserved. Previous `macos-minimal` and
-`macos-developer` blocks are migrated into this single block.
+Oh My Zsh and Powerlevel10k are intentionally not installed.
 
-No Oh My Zsh or Powerlevel10k framework is installed.
-
-## Theme switching
-
-The core profile installs `~/.local/bin/devtheme`:
+### Theme switching
 
 ```bash
-devtheme list
 devtheme current
+devtheme list
 
-devtheme tokyo        # TokyoNight Moon/Day + Jetpack
-devtheme tokyo-night  # TokyoNight Moon/Day + Tokyo Night preset
-devtheme catppuccin   # Mocha/Latte + Catppuccin Powerline
-devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
+devtheme tokyo
+devtheme tokyo-night
+devtheme catppuccin
+devtheme gruvbox
 ```
 
-An explicit switch backs up a custom `starship.toml` before replacing it with a
-managed preset symlink. After switching, press `Cmd+Shift+,` in Ghostty.
+An explicit switch backs up a custom active Starship config before replacing it.
+After switching, press `Cmd+Shift+,` in Ghostty.
 
-## AI feature
+## Repeatability and ownership
 
-The `ai` feature is deliberately project-scoped. It does not install global
-Python packages. It prepares:
-
-```text
-~/projects/ai-ml-starter
-```
-
-with a uv virtual environment containing the scientific Python stack, PyTorch
-with macOS MPS support, Hugging Face tooling, Jupyter, and Apple Silicon MLX
-packages. Existing projects with a `pyproject.toml` are reused; a non-empty
-unrelated directory is rejected.
-
-The `mlsys` feature adds profiling, benchmarking, ONNX, and runtime packages to
-that same environment instead of creating a second overlapping environment.
-
-## Conda feature
-
-```bash
-./scripts/bootstrap-macos.sh --features conda
-```
-
-installs Miniforge under:
-
-```text
-~/miniforge3
-```
-
-Miniforge is used only as the conda-forge compatibility/native-dependency layer.
-Normal Python-first projects remain uv-managed.
-
-## Repeatability and safety
-
-The bootstrap is designed to be rerun:
+The bootstrap is safe to rerun:
 
 - `brew bundle check` skips satisfied manifests;
-- `--no-upgrade` is the default;
+- upgrades require `--upgrade`;
 - managed Ghostty files are backed up before replacement;
-- unmanaged or symlinked Ghostty configs are preserved and receive a review
-  candidate instead;
-- `appearance.ghostty` is created only when absent;
-- only the marked `.zshrc` block is replaced;
-- Starship/theme choices survive reruns;
-- Git LFS initialization is idempotent.
+- unmanaged or symlinked Ghostty files are preserved and receive a review candidate;
+- `appearance.ghostty` is installed only when missing;
+- `local.ghostty` is never managed;
+- only repository-marked zsh blocks are replaced;
+- old minimal/developer blocks migrate to the single core block;
+- active Ghostty/Starship theme choices survive reruns.
 
 Useful controls:
 
@@ -247,31 +248,18 @@ Useful controls:
 ./scripts/configure-macos-shell.sh --profile core
 ```
 
-## Compatibility aliases
+## Compatibility names
 
-The old names remain accepted but are not part of the new conceptual model:
+The implementation accepts these previous profile names during migration:
 
 ```text
 minimal, developer, personal -> core
-workstation                  -> core + build,containers
-enterprise                   -> restricted
+restricted                  -> enterprise
+workstation                 -> core + ml,containers
 ```
 
-The old macOS entrypoint is now only a wrapper around the modular bootstrap.
-
-## Deliberate omissions
-
-The default `core` run does not install:
-
-- Python or an AI project environment;
-- Miniforge;
-- CMake/containers;
-- model weights;
-- VS Code extensions;
-- Yazi or another terminal file manager;
-- account credentials, API keys, or SSH keys.
-
-Those are either explicit features or user/project responsibilities.
+The old Mac features `ai`, `conda`, `mlsys`, and `build` intentionally fail with
+a migration message. They no longer represent host responsibilities.
 
 ## Validation
 
@@ -279,5 +267,6 @@ Those are either explicit features or user/project responsibilities.
 make verify-macos
 ```
 
-The CI suite runs syntax, manifest, migration, idempotence, theme-switching, and
-config-preservation tests on both Linux and macOS runners.
+The GitHub Actions workflow runs static and integration checks on both Linux and
+macOS, including repeatability, old-block migration, theme switching, and user
+configuration preservation.
