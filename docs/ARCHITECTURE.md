@@ -10,9 +10,12 @@ feature  optional host capability
 project  owns language and ML dependencies
 ```
 
-There is no macOS profile hierarchy. Enterprise use is represented by installing
-core without the optional `ai` feature, rather than by maintaining a second
-nearly identical machine definition.
+There is no macOS profile hierarchy or compatibility layer. The public macOS
+interface is intentionally limited to:
+
+```text
+features: ai, mlsys, containers
+```
 
 ## Ownership boundaries
 
@@ -48,18 +51,14 @@ The bootstrap does not own:
 - logins, API keys, SSH keys, or secrets;
 - VS Code extensions;
 - enterprise allowlists, mirrors, firewall rules, or license review;
-- unmarked personal dotfile content.
+- project dependencies.
 
 ## macOS modules
 
 ### Core
 
 Core is always installed and contains the common terminal, editor, repository,
-and shell experience. Keeping this complete baseline in one module avoids the
-former minimal/developer split, where one state was only a slightly less usable
-version of the other.
-
-The terminal stack is deliberately framework-free:
+and shell experience:
 
 ```text
 Ghostty
@@ -72,7 +71,8 @@ zsh-syntax-highlighting
 ripgrep / fd / jq / yq / bat / ShellCheck / just
 ```
 
-Oh My Zsh, Powerlevel10k, and terminal file managers remain personal choices.
+Oh My Zsh, Powerlevel10k, and terminal file managers remain separate personal
+choices.
 
 ### `ai`
 
@@ -85,10 +85,9 @@ Ollama
 ```
 
 It does not install models, Python packages, or a second inference engine.
-Ollama is the default convenient local runtime. `llama.cpp` is deliberately not
-installed because its normal local-inference role overlaps with Ollama; it is a
-manual advanced choice for direct GGUF, quantization, server-flag, or benchmark
-workflows.
+Ollama is the convenient local runtime. `llama.cpp` is deliberately excluded
+because its ordinary inference role overlaps with Ollama; it remains a manual
+advanced choice for direct GGUF, quantization, server flags, or runtime work.
 
 ### `mlsys`
 
@@ -112,15 +111,46 @@ start a VM, service, or container.
 
 ## Configuration ownership
 
-The macOS configurator follows these rules:
+The macOS configurator uses one source of truth per concern.
 
-- managed Ghostty main config: timestamped backup before update;
-- unmanaged or symlinked Ghostty config: preserve and emit review candidate;
-- `appearance.ghostty`: install only when absent;
-- `local.ghostty`: never create or modify;
-- `.zshrc`: replace only one marked `macos-core` block;
-- Starship Jetpack: generate only when no active config exists;
-- explicit `devtheme` switch: back up custom Starship config first.
+### Managed files
+
+```text
+~/.zshrc
+~/.config/ghostty/config.ghostty
+~/.local/bin/devtheme
+```
+
+When an existing file is adopted, its original content is saved once under:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/<name>.original
+```
+
+Fixed backup names prevent timestamped backup accumulation. Repeated runs simply
+compare and update the managed file.
+
+### User-owned overrides
+
+```text
+~/.config/zsh/local.zsh
+~/.config/ghostty/local.ghostty
+~/.config/ghostty/appearance.ghostty
+~/.config/starship.toml
+```
+
+- `local.zsh` and `local.ghostty` are never created or overwritten.
+- `appearance.ghostty` is installed only when absent.
+- an existing Starship config is preserved;
+- an explicit `devtheme` switch backs it up once as
+  `starship.toml.original` before selecting a managed preset.
+
+Ghostty's later macOS Application Support config path is removed after one-time
+backup so it cannot silently override the XDG config.
+
+The managed Ghostty config uses the macOS login shell by default. A commented
+`command = /bin/zsh -l` recovery line is provided for directory-managed accounts
+that still start Bash.
 
 ## Repeatability
 
@@ -129,6 +159,8 @@ The macOS configurator follows these rules:
 - Git LFS initialization is idempotent.
 - Optional features are independently selectable.
 - No macOS feature writes into a project directory.
+- Existing packages are not reinstalled and unrelated packages are not removed.
+- Configuration adoption creates at most one original backup per managed file.
 - CI runs configuration tests on both Linux and macOS runners.
 
 ## Windows model
