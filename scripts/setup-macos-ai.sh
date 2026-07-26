@@ -20,42 +20,20 @@ Options:
   --dry-run              Print intended actions without changing anything.
   -h, --help             Show this help.
 
-This feature creates or reuses one uv project. It does not install global
-Python packages and does not modify unrelated repositories.
+This feature creates or reuses the repository's uv starter project. It does not
+install global Python packages and refuses unrelated non-empty directories.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)
-      PROFILE="$2"
-      shift 2
-      ;;
-    --python)
-      PYTHON_VERSION="$2"
-      shift 2
-      ;;
-    --project-dir)
-      PROJECT_DIR="$2"
-      shift 2
-      ;;
-    --with-mlsys)
-      WITH_MLSYS=1
-      shift
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 2
-      ;;
+    --profile) PROFILE="$2"; shift 2 ;;
+    --python) PYTHON_VERSION="$2"; shift 2 ;;
+    --project-dir) PROJECT_DIR="$2"; shift 2 ;;
+    --with-mlsys) WITH_MLSYS=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
@@ -66,10 +44,10 @@ case "$PROFILE" in
   *) echo "Unknown profile: $PROFILE" >&2; exit 2 ;;
 esac
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
+[[ "$(uname -s)" == "Darwin" ]] || {
   echo "This feature is intended for macOS." >&2
   exit 1
-fi
+}
 
 command -v uv >/dev/null 2>&1 || {
   echo "uv is required. Install the core profile first." >&2
@@ -83,15 +61,15 @@ TEMPLATE_DIR="$REPO_ROOT/templates/ai-starter"
 }
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  echo "[setup-macos-ai] would prepare project: $PROJECT_DIR"
+  echo "[setup-macos-ai] would prepare: $PROJECT_DIR"
   echo "[setup-macos-ai] would use Python: $PYTHON_VERSION"
-  echo "[setup-macos-ai] would install base, LLM, development, PyTorch/MPS, and Apple Silicon packages"
-  [[ "$WITH_MLSYS" == "1" ]] && echo "[setup-macos-ai] would add ML systems packages"
+  echo "[setup-macos-ai] would run uv sync with ai and $PROFILE extras"
+  [[ "$WITH_MLSYS" == "1" ]] && echo "[setup-macos-ai] would include the mlsys extra"
   exit 0
 fi
 
 # BSD find on macOS does not provide GNU -mindepth/-maxdepth flags. `ls -A`
-# is sufficient here because the path is quoted and only emptiness matters.
+# is sufficient because the path is quoted and only emptiness matters.
 if [[ -d "$PROJECT_DIR" && -n "$(ls -A "$PROJECT_DIR" 2>/dev/null)" && ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
   echo "Refusing to populate a non-empty directory without pyproject.toml: $PROJECT_DIR" >&2
   exit 1
@@ -103,40 +81,43 @@ if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
   printf '%s\n' "$PYTHON_VERSION" > "$PROJECT_DIR/.python-version"
   echo "[setup-macos-ai] created starter project: $PROJECT_DIR"
 else
-  # Existing projects own their files. Add only template files that are absent.
-  rsync -a --ignore-existing "$TEMPLATE_DIR/" "$PROJECT_DIR/"
-  if [[ ! -f "$PROJECT_DIR/.python-version" ]]; then
-    printf '%s\n' "$PYTHON_VERSION" > "$PROJECT_DIR/.python-version"
+  if ! grep -Eq '^name[[:space:]]*=[[:space:]]*"ai-ml-starter"' "$PROJECT_DIR/pyproject.toml"; then
+    echo "Refusing to manage an unrelated Python project: $PROJECT_DIR" >&2
+    exit 1
   fi
-  echo "[setup-macos-ai] reusing project: $PROJECT_DIR"
+  rsync -a --ignore-existing "$TEMPLATE_DIR/" "$PROJECT_DIR/"
+  [[ -f "$PROJECT_DIR/.python-version" ]] || printf '%s\n' "$PYTHON_VERSION" > "$PROJECT_DIR/.python-version"
+  echo "[setup-macos-ai] reusing starter project: $PROJECT_DIR"
 fi
 
 cd "$PROJECT_DIR"
 
-if [[ ! -x .venv/bin/python ]]; then
-  uv venv --python "$PYTHON_VERSION"
-fi
+if grep -Eq '^ai[[:space:]]*=[[:space:]]*\[' pyproject.toml; then
+  SYNC_ARGS=(--extra ai)
+  if [[ "$PROFILE" == "restricted" ]]; then
+    SYNC_ARGS+=(--extra restricted)
+  else
+    SYNC_ARGS+=(--extra personal)
+  fi
+  [[ "$WITH_MLSYS" == "1" ]] && SYNC_ARGS+=(--extra mlsys)
 
-uv pip install \
-  -r requirements/base.txt \
-  -r requirements/llm.txt \
-  -r requirements/dev.txt
-
-# macOS wheels use the Metal/MPS backend where supported; no CUDA index is used.
-uv pip install torch torchvision torchaudio
-
-if [[ "$(uname -m)" == "arm64" ]]; then
-  uv pip install -r requirements/macos-apple-silicon.txt
-fi
-
-if [[ "$WITH_MLSYS" == "1" ]]; then
-  uv pip install -r requirements/mlsys.txt
-fi
-
-if [[ "$PROFILE" == "restricted" ]]; then
-  uv pip install -r requirements/enterprise.txt
+  # uv creates .venv, resolves dependencies, and records the exact solution in
+  # uv.lock. Re-running sync keeps the environment aligned with project metadata.
+  uv sync "${SYNC_ARGS[@]}"
 else
-  uv pip install -r requirements/personal.txt
+  # Compatibility path for starter projects created before pyproject extras were
+  # introduced. Their files remain user-owned; no pyproject rewrite is forced.
+  echo "[setup-macos-ai] legacy starter detected; using requirements compatibility path" >&2
+  [[ -x .venv/bin/python ]] || uv venv --python "$PYTHON_VERSION"
+  uv pip install -r requirements/base.txt -r requirements/llm.txt -r requirements/dev.txt
+  uv pip install torch torchvision torchaudio
+  [[ "$(uname -m)" == "arm64" ]] && uv pip install -r requirements/macos-apple-silicon.txt
+  [[ "$WITH_MLSYS" == "1" ]] && uv pip install -r requirements/mlsys.txt
+  if [[ "$PROFILE" == "restricted" ]]; then
+    uv pip install -r requirements/enterprise.txt
+  else
+    uv pip install -r requirements/personal.txt
+  fi
 fi
 
 uv run python scripts/check_env.py || true
