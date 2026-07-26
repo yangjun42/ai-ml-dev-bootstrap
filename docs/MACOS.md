@@ -14,7 +14,7 @@ The public interface is intentionally small:
 features: ai, mlsys, containers
 ```
 
-There are no profiles or tiered setup levels.
+There are no profiles, tiered setup levels, or compatibility aliases.
 
 ## Recommended commands
 
@@ -57,15 +57,8 @@ zsh-autosuggestions + zsh-syntax-highlighting
 Git and OpenSSH are supplied by macOS / Apple Command Line Tools and are not
 reinstalled through Homebrew.
 
-Core deliberately excludes:
-
-```text
-public AI applications
-local model runtimes
-containers
-native ML systems build tools
-Python and project environments
-```
+Core deliberately excludes public AI applications, a local model runtime,
+containers, ML systems build tools, Python, and project environments.
 
 ## Features
 
@@ -83,15 +76,13 @@ Claude Code CLI
 Ollama App
 ```
 
-This is the recommended personal setup. It installs applications only and does
-not sign in, write credentials, download an Ollama model, or create a project.
+It does not sign in, write credentials, download an Ollama model, install
+Python, or create a project.
 
 #### Why Ollama, not llama.cpp by default?
 
-Both can run local models, so installing both in a simple host bootstrap is
-mostly redundant.
-
-Ollama is selected because it provides the higher-level workflow needed here:
+Both can run local models, so installing both in a small host bootstrap is
+mostly redundant. Ollama provides the intended higher-level workflow:
 
 ```text
 model download and storage
@@ -101,12 +92,10 @@ coding-agent integrations
 minimal runtime configuration
 ```
 
-`llama.cpp` is a lower-level inference toolkit. Install it separately only when
-you need direct GGUF file handling, conversion or quantization, detailed server
-flags, kernel/runtime experiments, or its benchmark tools.
-
-FFmpeg is not part of `ai`; multimedia preprocessing belongs to a project or a
-future narrowly scoped feature when a real need appears.
+`llama.cpp` remains a manual advanced choice for direct GGUF handling,
+conversion or quantization, detailed server flags, kernel/runtime experiments,
+or its benchmark tools. FFmpeg is also omitted until a project has a concrete
+multimedia requirement.
 
 ### `mlsys`
 
@@ -123,13 +112,9 @@ pkgconf
 hyperfine
 ```
 
-This feature is systems-facing rather than model-facing. It supports native
-extension builds, runtime/component compilation, and repeatable command-level
-benchmarks.
-
-It does not install Python, PyTorch, MLX, Jupyter, ONNX Runtime, TensorBoard, or
-profiling packages. Those versions must remain aligned with the repository that
-uses them.
+This feature supports native-extension builds, runtime/component compilation,
+and repeatable command-level benchmarks. Framework-specific profilers and
+runtimes remain project dependencies.
 
 ### `containers`
 
@@ -137,16 +122,8 @@ uses them.
 ./scripts/bootstrap-macos.sh --features containers
 ```
 
-Installs:
-
-```text
-Colima
-Docker CLI
-Docker Compose
-```
-
-It does not start Colima, create a VM, change Docker context, pull an image, or
-run a container.
+Installs Colima, Docker CLI, and Docker Compose. It does not start Colima,
+create a VM, change Docker context, pull an image, or run a container.
 
 ### `all`
 
@@ -175,20 +152,33 @@ cd my-project
 uv add numpy pandas scikit-learn
 ```
 
-Add PyTorch, MLX, Jupyter, Transformers, serving packages, or profilers only when
-that repository requires them. This keeps the Mac host small and lets local,
-remote, and CI environments reproduce from project files instead of machine
-history.
+Add PyTorch, MLX, Jupyter, Transformers, serving packages, or profilers only
+when that repository requires them.
 
 ## Terminal baseline
 
 ### Ghostty
 
-Managed files:
+The repository manages:
 
 ```text
 ~/.config/ghostty/config.ghostty
-~/.config/ghostty/appearance.ghostty
+```
+
+The first time an existing file is replaced, its original content is saved to:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/config.ghostty.original
+```
+
+Only that one fixed backup is created. Subsequent updates do not create backup
+clutter.
+
+Appearance and machine-local settings are separate:
+
+```text
+~/.config/ghostty/appearance.ghostty  preserved when already present
+~/.config/ghostty/local.ghostty       never created or overwritten
 ```
 
 Defaults:
@@ -196,28 +186,54 @@ Defaults:
 ```text
 Dark theme   TokyoNight Moon
 Light theme  TokyoNight Day
-Shell        /bin/zsh -l
+Shell        macOS login shell
 Updates      check stable channel
 ```
 
-The explicit zsh command handles directory-managed accounts that still advertise
-`/bin/bash`, without changing the account-wide login shell.
+The managed config does not force a shell. It contains this commented recovery
+option:
 
-The baseline also configures SSH/terminfo integration, working-directory
-inheritance, bounded scrollback, secure input, clipboard protection, and an
-optional `local.ghostty` override.
+```ini
+# command = /bin/zsh -l
+```
+
+Uncomment it only when a directory-managed account still launches Bash and
+therefore does not read `~/.zshrc`. Shell integration remains automatic:
+
+```ini
+shell-integration = detect
+```
+
+Ghostty may also read this later macOS-specific location:
+
+```text
+~/Library/Application Support/com.mitchellh.ghostty/config.ghostty
+```
+
+Keeping both paths creates ambiguous precedence. If that duplicate file exists,
+the configurator saves it once as:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/ghostty-macos-config.original
+```
+
+and removes the duplicate, leaving the XDG path as the single source of truth.
 
 ### zsh
 
-The configurator maintains exactly one marked block in `~/.zshrc`:
+The repository owns the complete:
 
-```zsh
-# >>> ai-ml-dev-bootstrap:macos-core >>>
-...
-# <<< ai-ml-dev-bootstrap:macos-core <<<
+```text
+~/.zshrc
 ```
 
-It provides:
+An existing file is saved once as:
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/zshrc.original
+```
+
+The managed file provides:
 
 ```text
 Homebrew PATH recovery
@@ -230,7 +246,28 @@ zsh-autosuggestions
 zsh-syntax-highlighting
 ```
 
+Put personal or machine-specific additions in:
+
+```text
+~/.config/zsh/local.zsh
+```
+
+That file is never created or overwritten by the bootstrap. It is loaded before
+the final typing helpers so syntax highlighting remains the last line-editor
+integration.
+
 Oh My Zsh and Powerlevel10k are intentionally not installed.
+
+### Starship
+
+On a fresh machine, the configurator generates Jetpack and selects it through:
+
+```text
+~/.config/starship.toml
+```
+
+If that file already exists, it is preserved. This is important when rerunning
+core after a manual Starship setup.
 
 ### Theme switching
 
@@ -244,29 +281,51 @@ devtheme catppuccin
 devtheme gruvbox
 ```
 
-An explicit switch backs up a custom active Starship configuration before
-replacing it. Press `Cmd+Shift+,` in Ghostty after switching.
+An explicit switch may replace a custom Starship config. Its original content
+is saved exactly once as:
 
-## Repeatability and ownership
+```text
+~/.config/ai-ml-dev-bootstrap/backups/starship.toml.original
+```
 
-The bootstrap is safe to rerun:
+Press `Cmd+Shift+,` in Ghostty after switching.
 
-- `brew bundle check` skips satisfied manifests;
-- upgrades require `--upgrade`;
-- managed Ghostty files are backed up before replacement;
-- unmanaged or symlinked Ghostty files are preserved and receive a review candidate;
-- `appearance.ghostty` is installed only when missing;
-- `local.ghostty` is never managed;
-- only the repository-marked zsh block is replaced;
-- active Ghostty and Starship theme choices survive reruns.
+## Rerunning after the previous minimal setup
 
-Useful controls:
+Run the new personal setup normally:
 
 ```bash
+./scripts/bootstrap-macos.sh --features ai
+```
+
+The migration is deterministic:
+
+1. Homebrew Bundle checks each manifest first.
+2. Already installed packages and casks are skipped.
+3. Only missing core or AI items are installed.
+4. Existing versions are not upgraded unless `--upgrade` is supplied.
+5. Ghostty and zsh are adopted once with fixed `.original` backups.
+6. A duplicate Ghostty macOS config path is removed after one-time backup.
+7. Existing Ghostty appearance, local overrides, and Starship config remain.
+8. Repeated runs produce no additional backups and no duplicate shell
+   initialization.
+
+The bootstrap does not uninstall unrelated software left from an older setup.
+It only ensures the selected manifests are satisfied.
+
+## Controls
+
+```bash
+# Preview packages and config operations.
 ./scripts/bootstrap-macos.sh --features ai --dry-run
+
+# Allow package upgrades explicitly.
 ./scripts/bootstrap-macos.sh --features ai --upgrade
+
+# Install packages only.
 ./scripts/bootstrap-macos.sh --features ai --skip-config
-./scripts/bootstrap-macos.sh --features ai --force-config
+
+# Apply only terminal configuration.
 ./scripts/configure-macos-shell.sh
 ```
 
@@ -276,6 +335,7 @@ Useful controls:
 make verify-macos
 ```
 
-GitHub Actions runs static and integration checks on Linux and macOS, including
-manifest boundaries, repeatability, theme switching, and user configuration
-preservation.
+GitHub Actions runs static and integration checks on Linux and macOS. The suite
+covers manifest boundaries, shell syntax, one-time adoption, duplicate-config
+removal, repeated execution, theme switching, and preservation of explicit
+local overrides.
