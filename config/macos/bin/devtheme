@@ -6,13 +6,13 @@ usage() {
   cat <<'EOF'
 Usage: devtheme [--refresh] NAME
 
-Profiles:
+Theme pairs:
   tokyo          TokyoNight Moon/Day + Starship Jetpack (default)
   tokyo-night    TokyoNight Moon/Day + Starship Tokyo Night
   catppuccin     Catppuccin Mocha/Latte + Catppuccin Powerline
   gruvbox        Gruvbox Dark/Light Hard + Gruvbox Rainbow
   current        Show the active Ghostty theme and Starship preset
-  list           List available profiles
+  list           List available pairs
 
 --refresh regenerates the selected Starship preset from the installed version.
 After switching, press Cmd+Shift+, in Ghostty to reload its configuration.
@@ -26,10 +26,11 @@ if [[ "${1:-}" == "--refresh" ]]; then
 fi
 
 PROFILE="${1:-current}"
-GHOSTTY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
+CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
+GHOSTTY_DIR="$CONFIG_ROOT/ghostty"
 GHOSTTY_APPEARANCE="$GHOSTTY_DIR/appearance.ghostty"
-STARSHIP_PRESETS="$HOME/.config/starship/presets"
-STARSHIP_ACTIVE="${STARSHIP_CONFIG:-$HOME/.config/starship.toml}"
+STARSHIP_PRESETS="$CONFIG_ROOT/starship/presets"
+STARSHIP_ACTIVE="${STARSHIP_CONFIG:-$CONFIG_ROOT/starship.toml}"
 BACKUP_ROOT="$HOME/.config/ai-ml-dev-bootstrap/backups"
 
 case "$PROFILE" in
@@ -73,14 +74,14 @@ case "$PROFILE" in
     exit 0
     ;;
   *)
-    echo "Unknown theme profile: $PROFILE" >&2
+    echo "Unknown theme pair: $PROFILE" >&2
     usage >&2
     exit 2
     ;;
 esac
 
 if ! command -v starship >/dev/null 2>&1; then
-  echo "starship is required. Install the macOS developer profile first." >&2
+  echo "starship is required. Install the macOS core profile first." >&2
   exit 1
 fi
 
