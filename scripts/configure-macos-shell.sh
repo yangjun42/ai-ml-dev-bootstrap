@@ -52,6 +52,7 @@ BACKUP_ROOT="$HOME/.config/ai-ml-dev-bootstrap/backups"
 backup_once() {
   local source="$1"
   local name="$2"
+  name="${name#.}"
   local destination="$BACKUP_ROOT/${name}.original"
 
   [[ -e "$source" || -L "$source" ]] || return 0
