@@ -12,7 +12,7 @@ The public interface is intentionally small:
 
 ```text
 profiles: core, enterprise
-features: ml, containers
+features: ml, mlsys, containers
 ```
 
 ## Recommended commands
@@ -33,8 +33,9 @@ Optional host tooling:
 
 ```bash
 ./scripts/bootstrap-macos.sh --features ml
+./scripts/bootstrap-macos.sh --features mlsys
 ./scripts/bootstrap-macos.sh --features containers
-./scripts/bootstrap-macos.sh --features ml,containers
+./scripts/bootstrap-macos.sh --features ml,mlsys,containers
 ```
 
 ## Profiles
@@ -85,31 +86,43 @@ review remain separate responsibilities.
 
 ## Features
 
+The features are independent. None of them creates a Python environment or
+installs a Python ML framework.
+
 ### `ml`
 
-Installs generic host-side tools useful for ML engineering:
+Model-facing tools for local work:
+
+```text
+llama.cpp
+FFmpeg
+```
+
+Ollama remains the simple default runtime in the personal `core` profile.
+`llama.cpp` is optional for direct GGUF control, benchmarking, server flags,
+and lower-level experimentation. FFmpeg supports audio/video preprocessing for
+multimodal workflows.
+
+The feature does not install MLX, PyTorch, Transformers, Jupyter, or a starter
+project.
+
+### `mlsys`
+
+Systems-facing tools for ML engineering:
 
 ```text
 CMake
 Ninja
 pkgconf
-FFmpeg
 hyperfine
 ```
 
-It deliberately does **not** install:
+This feature supports native-extension builds and repeatable command-level
+benchmarks. Framework-specific profilers such as `torch.profiler`, TensorBoard,
+Memray, or Scalene remain project dependencies because their versions should be
+locked with the code they measure.
 
-```text
-Python
-PyTorch / MLX / JAX / TensorFlow
-Jupyter
-Miniforge / conda / mamba
-an ai-ml-starter project
-```
-
-The feature exists for native-extension builds, media/data preprocessing, and
-repeatable command benchmarks. Framework and environment choices remain inside
-each repository.
+`mlsys` does not imply `ml`, and `ml` does not imply `mlsys`.
 
 ### `containers`
 
@@ -129,7 +142,7 @@ start a container.
 Equivalent to:
 
 ```bash
-./scripts/bootstrap-macos.sh --features ml,containers
+./scripts/bootstrap-macos.sh --features ml,mlsys,containers
 ```
 
 ## Project environments
@@ -151,9 +164,12 @@ cd my-project
 uv add numpy pandas scikit-learn
 ```
 
-Add PyTorch, MLX, Jupyter, or other packages only when that project's purpose
-requires them. This keeps the Mac host small and makes local, remote, and CI
-environments reproducible from project files rather than machine state.
+Add PyTorch, MLX, Jupyter, profiling packages, or other dependencies only when
+that repository requires them. This keeps local, remote, and CI environments
+reproducible from project files rather than machine state.
+
+Miniforge/conda/mamba are not part of the personal Mac interface. Install them
+manually only when a specific repository explicitly requires conda.
 
 ## Terminal baseline
 
@@ -255,11 +271,11 @@ The implementation accepts these previous profile names during migration:
 ```text
 minimal, developer, personal -> core
 restricted                  -> enterprise
-workstation                 -> core + ml,containers
+workstation                 -> core + mlsys,containers
 ```
 
-The old Mac features `ai`, `conda`, `mlsys`, and `build` intentionally fail with
-a migration message. They no longer represent host responsibilities.
+The old Mac features `ai`, `conda`, and `build` fail with a migration message.
+`mlsys` remains a first-class feature and is deliberately distinct from `ml`.
 
 ## Validation
 
