@@ -22,8 +22,7 @@ done
 
 for file in \
   brewfiles/macos/core.Brewfile \
-  brewfiles/macos/personal.Brewfile \
-  brewfiles/macos/ml.Brewfile \
+  brewfiles/macos/ai.Brewfile \
   brewfiles/macos/mlsys.Brewfile \
   brewfiles/macos/containers.Brewfile \
   config/macos/ghostty/config.ghostty \
@@ -55,15 +54,11 @@ for entry in "${required_core[@]}"; do
 done
 
 for entry in 'cask "chatgpt"' 'cask "claude-code"' 'cask "ollama-app"'; do
-  grep -Fqx "$entry" brewfiles/macos/personal.Brewfile
+  grep -Fqx "$entry" brewfiles/macos/ai.Brewfile
   if grep -Fqx "$entry" brewfiles/macos/core.Brewfile; then
-    echo "personal-only app leaked into core.Brewfile: $entry" >&2
+    echo "AI application leaked into core.Brewfile: $entry" >&2
     exit 1
   fi
-done
-
-for entry in 'brew "llama.cpp"' 'brew "ffmpeg"'; do
-  grep -Fqx "$entry" brewfiles/macos/ml.Brewfile
 done
 
 for entry in \
@@ -83,17 +78,19 @@ if grep -Eq '^brew "git"$' brewfiles/macos/core.Brewfile; then
   exit 1
 fi
 
-if grep -Eq '^(brew|cask) "(python(@[^"]*)?|miniforge|pixi|colima|docker|docker-compose|rectangle|yazi|llama.cpp|ffmpeg|cmake|ninja|hyperfine)"$' brewfiles/macos/core.Brewfile; then
+if grep -Eq '^(brew|cask) "(python(@[^"]*)?|miniforge|pixi|colima|docker|docker-compose|rectangle|yazi|llama.cpp|ffmpeg|cmake|ninja|hyperfine|chatgpt|claude-code|ollama-app)"$' brewfiles/macos/core.Brewfile; then
   echo "core.Brewfile unexpectedly contains project or optional feature tooling" >&2
   exit 1
 fi
 
-# Removed tiered manifests and automatic environment installers must stay gone.
+# Removed tier/profile manifests and environment installers must stay gone.
 for obsolete in \
   brewfiles/macos/minimal.Brewfile \
   brewfiles/macos/developer-extra.Brewfile \
   brewfiles/macos/workstation-extra.Brewfile \
   brewfiles/macos/restricted.Brewfile \
+  brewfiles/macos/personal.Brewfile \
+  brewfiles/macos/ml.Brewfile \
   brewfiles/macos/build.Brewfile \
   config/macos/zsh/minimal.zsh \
   config/macos/zsh/developer.zsh \
@@ -102,10 +99,8 @@ for obsolete in \
   test ! -e "$obsolete"
 done
 
-# ML and MLsys must remain distinct modules.
-if grep -Fqx 'brew "cmake"' brewfiles/macos/ml.Brewfile || \
-   grep -Fqx 'brew "llama.cpp"' brewfiles/macos/mlsys.Brewfile; then
-  echo "ML and MLsys Brewfiles have crossed responsibilities" >&2
+if grep -Eq 'llama\.cpp|ffmpeg' brewfiles/macos/ai.Brewfile; then
+  echo "AI feature must remain the three application bundle only" >&2
   exit 1
 fi
 
@@ -123,26 +118,27 @@ grep -Fq 'fzf --zsh' config/macos/zsh/core.zsh
 grep -Fq 'starship init zsh' config/macos/zsh/core.zsh
 grep -Fq 'zsh-syntax-highlighting.zsh' config/macos/zsh/core.zsh
 
-# Bootstrap interface: two policy profiles and three orthogonal features.
-grep -Fq 'PROFILE="core"' scripts/bootstrap-macos.sh
-grep -Fq 'core|enterprise' scripts/bootstrap-macos.sh
-grep -Fq 'ml|mlsys|containers' scripts/bootstrap-macos.sh
-grep -Fq 'feature_enabled ml' scripts/bootstrap-macos.sh
+# Public interface: one core plus three orthogonal features.
+grep -Fq 'ai|mlsys|containers' scripts/bootstrap-macos.sh
+grep -Fq 'feature_enabled ai' scripts/bootstrap-macos.sh
 grep -Fq 'feature_enabled mlsys' scripts/bootstrap-macos.sh
 grep -Fq 'feature_enabled containers' scripts/bootstrap-macos.sh
+grep -Fq 'brewfiles/macos/ai.Brewfile' scripts/bootstrap-macos.sh
 grep -Fq 'bundle_is_satisfied' scripts/bootstrap-macos.sh
 grep -Fq 'configure-macos-shell.sh' scripts/bootstrap-macos.sh
 grep -Fq 'no Python installation or virtual environment' scripts/bootstrap-macos.sh
 
-if grep -Eq 'setup-macos-ai|install-miniforge|uv python install|uv pip install' scripts/bootstrap-macos.sh; then
-  echo "macOS host bootstrap must not create or populate ML environments" >&2
+if grep -Eq -- '--profile|PROFILE=|setup-macos-ai|install-miniforge|uv python install|uv pip install|llama\.cpp|ffmpeg' scripts/bootstrap-macos.sh; then
+  echo "macOS bootstrap contains a removed profile or environment/runtime path" >&2
   exit 1
 fi
 
-grep -Fq 'core|enterprise' scripts/configure-macos-shell.sh
+if grep -Eq -- '--profile|PROFILE=' scripts/configure-macos-shell.sh; then
+  echo "macOS configurator must expose one shared core configuration" >&2
+  exit 1
+fi
 
-grep -Fq 'profiles: core, enterprise' docs/MACOS.md
-grep -Fq 'features: ml, mlsys, containers' docs/MACOS.md
+grep -Fq 'features: ai, mlsys, containers' docs/MACOS.md
 
 # Starter metadata remains generic and does not embed a machine-wide ML stack.
 python3 - <<'PY'
@@ -159,4 +155,4 @@ PY
 
 bash scripts/test-macos-configure.sh
 
-echo "macOS core/enterprise ML/MLsys static and integration checks passed"
+echo "macOS core/AI/MLsys static and integration checks passed"
