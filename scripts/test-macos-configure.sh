@@ -53,13 +53,13 @@ test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "jetpack.toml"
 test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
 grep -Fq 'theme = dark:TokyoNight Moon,light:TokyoNight Day' "$HOME/.config/ghostty/appearance.ghostty"
 
-# Repeatability: no duplicate block and no reset of the active theme pair.
+# Repeatability and policy independence: enterprise uses the same terminal config.
 "${CONFIGURE[@]}" --profile core
 test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
 "$HOME/.local/bin/devtheme" catppuccin
 grep -Fq 'theme = dark:Catppuccin Mocha,light:Catppuccin Latte' "$HOME/.config/ghostty/appearance.ghostty"
 test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "catppuccin-powerline.toml"
-"${CONFIGURE[@]}" --profile restricted
+"${CONFIGURE[@]}" --profile enterprise
 test "$(basename "$(readlink "$HOME/.config/starship.toml")")" = "catppuccin-powerline.toml"
 test "$(grep -Fc '# >>> ai-ml-dev-bootstrap:macos-core >>>' "$HOME/.zshrc")" -eq 1
 
@@ -104,4 +104,4 @@ syntax_line="$(grep -n 'zsh-syntax-highlighting.zsh' "$HOME/.zshrc" | tail -n 1 
 test "$compinit_line" -lt "$zoxide_line"
 test "$starship_line" -lt "$syntax_line"
 
-echo "macOS core configuration integration tests passed"
+echo "macOS core/enterprise configuration integration tests passed"
