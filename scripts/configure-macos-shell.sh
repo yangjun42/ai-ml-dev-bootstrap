@@ -2,7 +2,6 @@
 set -euo pipefail
 
 DRY_RUN=0
-FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
@@ -10,23 +9,19 @@ usage() {
 Usage: ./scripts/configure-macos-shell.sh [options]
 
 Options:
-  --force-config  Replace a symlinked Ghostty main config after one-time backup.
-  --dry-run       Print intended changes without writing files.
-  -h, --help      Show this help.
+  --dry-run   Print intended changes without writing files.
+  -h, --help  Show this help.
 
-Installs one reliable Ghostty, zsh, Starship, navigation, and interactive-shell
-configuration. Existing regular Ghostty configs are adopted after one one-time
-backup; symlinked configs remain externally owned unless --force-config is used.
-Only repository-marked zsh blocks are replaced.
+The repository owns ~/.zshrc and the primary Ghostty config. Existing files are
+backed up once as *.original, then replaced. Put machine-specific additions in:
+  ~/.config/zsh/local.zsh
+  ~/.config/ghostty/local.ghostty
+Existing Starship configuration and Ghostty appearance choices are preserved.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force-config)
-      FORCE_CONFIG=1
-      shift
-      ;;
     --dry-run)
       DRY_RUN=1
       shift
@@ -62,7 +57,6 @@ backup_once() {
   [[ -e "$source" || -L "$source" ]] || return 0
 
   if [[ -e "$destination" || -L "$destination" ]]; then
-    log "one-time backup already exists: $destination"
     return 0
   fi
 
@@ -79,50 +73,44 @@ install_managed_file() {
   local source="$1"
   local target="$2"
   local mode="${3:-0644}"
-  local candidate="${target}.ai-ml-dev-bootstrap-new"
 
   [[ -f "$source" ]] || { echo "Missing template: $source" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would install managed file: $target"
+    log "would manage: $target"
     return
   fi
 
   mkdir -p "$(dirname "$target")"
 
+  if [[ -d "$target" && ! -L "$target" ]]; then
+    echo "Expected a file but found a directory: $target" >&2
+    exit 1
+  fi
+
   if [[ ! -e "$target" && ! -L "$target" ]]; then
     install -m "$mode" "$source" "$target"
-    rm -f "$candidate"
     log "installed: $target"
     return
   fi
 
   if cmp -s "$source" "$target" 2>/dev/null; then
-    rm -f "$candidate"
     log "already current: $target"
     return
   fi
 
-  if [[ -L "$target" && "$FORCE_CONFIG" != "1" ]]; then
-    if ! cmp -s "$source" "$candidate" 2>/dev/null; then
-      install -m "$mode" "$source" "$candidate"
-    fi
-    log "preserved externally managed symlink: $target"
-    log "review candidate: $candidate"
-    return
-  fi
-
   backup_once "$target" "$(basename "$target")"
-  [[ -L "$target" ]] && rm -f "$target"
+  rm -f "$target"
   install -m "$mode" "$source" "$target"
-  rm -f "$candidate"
-  log "adopted managed file: $target"
+  log "updated: $target"
 }
 
 install_if_missing() {
   local source="$1"
   local target="$2"
   local mode="${3:-0644}"
+
+  [[ -f "$source" ]] || { echo "Missing template: $source" >&2; exit 1; }
 
   if [[ "$DRY_RUN" == "1" ]]; then
     log "would install if absent: $target"
@@ -131,90 +119,31 @@ install_if_missing() {
 
   mkdir -p "$(dirname "$target")"
   if [[ -e "$target" || -L "$target" ]]; then
-    log "preserving existing user choice: $target"
+    log "preserving existing choice: $target"
   else
     install -m "$mode" "$source" "$target"
     log "installed initial file: $target"
   fi
 }
 
-marker_count() {
-  grep -Fc "$2" "$1" 2>/dev/null || true
-}
+remove_duplicate_ghostty_config() {
+  local duplicate="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
 
-validate_managed_markers() {
-  local file="$1"
-  local name starts ends
-
-  for name in macos-core macos-minimal macos-developer; do
-    starts="$(marker_count "$file" "# >>> ai-ml-dev-bootstrap:${name} >>>")"
-    ends="$(marker_count "$file" "# <<< ai-ml-dev-bootstrap:${name} <<<")"
-    if [[ "$starts" != "$ends" ]]; then
-      echo "Malformed ai-ml-dev-bootstrap block markers in $file: $name" >&2
-      exit 1
-    fi
-  done
-}
-
-configure_zshrc() {
-  local zshrc="$HOME/.zshrc"
-  local template="$REPO_ROOT/config/macos/zsh/core.zsh"
-  local had_content=0
-
-  [[ -f "$template" ]] || { echo "Missing zsh template: $template" >&2; exit 1; }
+  [[ -e "$duplicate" || -L "$duplicate" ]] || return 0
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    log "would merge one core zsh block into: $zshrc"
+    log "would back up once and remove duplicate Ghostty config: $duplicate"
     return
   fi
 
-  [[ -s "$zshrc" || -L "$zshrc" ]] && had_content=1
-  touch "$zshrc"
-  validate_managed_markers "$zshrc"
-
-  local stripped tmp
-  stripped="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc-stripped.XXXXXX")"
-  tmp="$(mktemp "${TMPDIR:-/tmp}/ai-ml-zshrc.XXXXXX")"
-
-  # Remove the current block and the two repository-managed blocks from the
-  # earlier minimal/developer design. Unmarked user content is never deleted.
-  awk '
-    $0 == "# >>> ai-ml-dev-bootstrap:macos-core >>>" { skip = 1; next }
-    $0 == "# <<< ai-ml-dev-bootstrap:macos-core <<<" { skip = 0; next }
-    $0 == "# >>> ai-ml-dev-bootstrap:macos-minimal >>>" { skip = 1; next }
-    $0 == "# <<< ai-ml-dev-bootstrap:macos-minimal <<<" { skip = 0; next }
-    $0 == "# >>> ai-ml-dev-bootstrap:macos-developer >>>" { skip = 1; next }
-    $0 == "# <<< ai-ml-dev-bootstrap:macos-developer <<<" { skip = 0; next }
-    !skip { print }
-  ' "$zshrc" > "$stripped"
-
-  # Trim only trailing blank lines from user-owned content.
-  awk '
-    { lines[NR] = $0 }
-    END {
-      last = NR
-      while (last > 0 && lines[last] == "") last--
-      for (i = 1; i <= last; i++) print lines[i]
-    }
-  ' "$stripped" > "$tmp"
-  rm -f "$stripped"
-
-  [[ -s "$tmp" ]] && printf '\n\n' >> "$tmp"
-  cat "$template" >> "$tmp"
-  printf '\n' >> "$tmp"
-
-  if cmp -s "$tmp" "$zshrc"; then
-    rm -f "$tmp"
-    log "already current: $zshrc"
-  else
-    [[ "$had_content" == "1" ]] && backup_once "$zshrc" "zshrc"
-    cat "$tmp" > "$zshrc"
-    rm -f "$tmp"
-    log "updated managed block: $zshrc"
+  if [[ -d "$duplicate" && ! -L "$duplicate" ]]; then
+    echo "Expected a file but found a directory: $duplicate" >&2
+    exit 1
   fi
 
-  touch "$HOME/.zsh_history"
-  chmod 600 "$HOME/.zsh_history"
+  backup_once "$duplicate" "ghostty-macos-config"
+  rm -f "$duplicate"
+  log "removed duplicate Ghostty config path: $duplicate"
 }
 
 configure_starship() {
@@ -234,6 +163,7 @@ configure_starship() {
   }
 
   mkdir -p "$preset_root" "$HOME/.local/bin" "$(dirname "$active")"
+
   if [[ ! -s "$jetpack" ]]; then
     starship preset jetpack -o "$jetpack"
     log "generated Starship preset: $jetpack"
@@ -257,17 +187,14 @@ configure_starship() {
 GHOSTTY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
 install_managed_file "$REPO_ROOT/config/macos/ghostty/config.ghostty" "$GHOSTTY_DIR/config.ghostty"
 install_if_missing "$REPO_ROOT/config/macos/ghostty/appearance.ghostty" "$GHOSTTY_DIR/appearance.ghostty"
-
-MACOS_GHOSTTY_CONFIG="$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"
-if [[ -f "$MACOS_GHOSTTY_CONFIG" ]]; then
-  log "warning: macOS-specific Ghostty config loads after the managed XDG config:"
-  log "         $MACOS_GHOSTTY_CONFIG"
-fi
+remove_duplicate_ghostty_config
 
 configure_starship
-configure_zshrc
+install_managed_file "$REPO_ROOT/config/macos/zsh/core.zsh" "$HOME/.zshrc"
 
 if [[ "$DRY_RUN" != "1" ]]; then
+  touch "$HOME/.zsh_history"
+  chmod 600 "$HOME/.zsh_history"
   log "configuration complete"
   log "restart Ghostty, or press Cmd+Shift+, to reload reloadable settings"
 fi
