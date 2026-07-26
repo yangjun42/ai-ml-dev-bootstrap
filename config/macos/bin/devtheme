@@ -25,7 +25,7 @@ if [[ "${1:-}" == "--refresh" ]]; then
   shift
 fi
 
-PROFILE="${1:-current}"
+PAIR="${1:-current}"
 CONFIG_ROOT="${XDG_CONFIG_HOME:-$HOME/.config}"
 GHOSTTY_DIR="$CONFIG_ROOT/ghostty"
 GHOSTTY_APPEARANCE="$GHOSTTY_DIR/appearance.ghostty"
@@ -33,7 +33,7 @@ STARSHIP_PRESETS="$CONFIG_ROOT/starship/presets"
 STARSHIP_ACTIVE="${STARSHIP_CONFIG:-$CONFIG_ROOT/starship.toml}"
 BACKUP_ROOT="$HOME/.config/ai-ml-dev-bootstrap/backups"
 
-case "$PROFILE" in
+case "$PAIR" in
   list)
     printf '%s\n' tokyo tokyo-night catppuccin gruvbox
     exit 0
@@ -74,7 +74,7 @@ case "$PROFILE" in
     exit 0
     ;;
   *)
-    echo "Unknown theme pair: $PROFILE" >&2
+    echo "Unknown theme pair: $PAIR" >&2
     usage >&2
     exit 2
     ;;
@@ -93,8 +93,7 @@ if [[ "$REFRESH" == "1" || ! -s "$PRESET_FILE" ]]; then
 fi
 
 # Switching is explicit, so replacing the active Starship config is expected;
-# nevertheless, preserve a custom file or external symlink before the first
-# switch. Symlinks already pointing into our preset directory need no backup.
+# preserve a custom file or external symlink before the first switch.
 BACKUP_ACTIVE=0
 if [[ -e "$STARSHIP_ACTIVE" || -L "$STARSHIP_ACTIVE" ]]; then
   if [[ -L "$STARSHIP_ACTIVE" ]]; then
