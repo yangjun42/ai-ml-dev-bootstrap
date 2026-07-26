@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE="core"
 FEATURES_CSV=""
 DRY_RUN=0
 UPGRADE=0
@@ -9,42 +8,31 @@ SKIP_CONFIG=0
 FORCE_CONFIG=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FEATURES=()
-COMPAT_FEATURES=""
 
 usage() {
   cat <<'EOF'
 Usage: ./scripts/bootstrap-macos.sh [options]
 
-Profiles:
-  core        Default personal Mac: complete terminal/development baseline plus
-              ChatGPT/Codex, Claude Code, and Ollama.
-  enterprise  Same open-source terminal/development baseline, without public AI
-              applications or the local Ollama runtime.
+The core development host is always installed. Add only the host capabilities
+that this Mac needs.
 
 Optional features (comma-separated):
-  ml          Model-facing local tools: llama.cpp and FFmpeg. Does not create a
-              Python environment or install a framework.
-  mlsys       Systems-facing build and benchmark tools: CMake, Ninja, pkgconf,
-              and hyperfine. Does not create a Python environment.
-  containers  Colima and Docker-compatible CLI tooling. Does not start Colima.
-  all         Enable ml, mlsys, and containers.
+  ai          ChatGPT/Codex, Claude Code, and Ollama.
+  mlsys       CMake, Ninja, pkgconf, and hyperfine for ML systems work.
+  containers  Colima and Docker-compatible CLI tooling; does not start Colima.
+  all         Enable ai, mlsys, and containers.
 
 Options:
-  --profile NAME   core or enterprise. Default: core.
-  --features LIST  Example: ml,mlsys or mlsys,containers.
+  --features LIST  Example: ai or ai,mlsys.
   --upgrade        Update Homebrew metadata and allow package upgrades.
   --skip-config    Install packages only; do not manage Ghostty/zsh files.
   --force-config   Back up and replace an unmanaged Ghostty main config.
   --dry-run        Print package and configuration actions without changing them.
   -h, --help       Show this help.
 
-Compatibility profile aliases:
-  minimal, developer, personal -> core
-  restricted                  -> enterprise
-  workstation                 -> core + mlsys,containers
-
-Python versions, virtual environments, ML frameworks, notebooks, and project
-packages are intentionally project-owned and should be managed with uv.
+Python versions, virtual environments, ML frameworks, notebooks, profiling
+packages, and project dependencies are intentionally managed inside each
+repository with uv.
 EOF
 }
 
@@ -81,20 +69,17 @@ parse_feature_list() {
     [[ -n "$normalized" ]] || continue
 
     case "$normalized" in
-      core|minimal|developer) ;;
-      ml|mlsys|containers) append_feature "$normalized" ;;
+      ai|mlsys|containers)
+        append_feature "$normalized"
+        ;;
       all)
-        append_feature ml
+        append_feature ai
         append_feature mlsys
         append_feature containers
         ;;
-      ai|conda|build)
-        echo "The macOS feature '$normalized' was removed." >&2
-        echo "Use ml for model-facing tools, mlsys for systems/build tools, and uv inside each project." >&2
-        exit 2
-        ;;
       *)
         echo "Unknown macOS feature: $normalized" >&2
+        usage >&2
         exit 2
         ;;
     esac
@@ -115,11 +100,6 @@ feature_summary() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)
-      [[ $# -ge 2 ]] || { echo "--profile requires a value" >&2; exit 2; }
-      PROFILE="$2"
-      shift 2
-      ;;
     --features)
       [[ $# -ge 2 ]] || { echo "--features requires a value" >&2; exit 2; }
       FEATURES_CSV="$2"
@@ -145,11 +125,6 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    --python|--project-dir)
-      echo "$1 is no longer a host-bootstrap option." >&2
-      echo "Create and configure Python/ML environments inside each project with uv." >&2
-      exit 2
-      ;;
     *)
       echo "Unknown argument: $1" >&2
       usage >&2
@@ -158,23 +133,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-PROFILE="$(printf '%s' "$PROFILE" | tr '[:upper:]' '[:lower:]')"
-case "$PROFILE" in
-  core|enterprise) ;;
-  minimal|developer|personal) PROFILE="core" ;;
-  restricted) PROFILE="enterprise" ;;
-  workstation)
-    PROFILE="core"
-    COMPAT_FEATURES="mlsys,containers"
-    ;;
-  *)
-    echo "Unknown macOS profile: $PROFILE" >&2
-    usage >&2
-    exit 2
-    ;;
-esac
-
-parse_feature_list "$COMPAT_FEATURES"
 parse_feature_list "$FEATURES_CSV"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -276,25 +234,17 @@ if [[ "$UPGRADE" == "1" && "$DRY_RUN" != "1" ]]; then
 fi
 
 BREWFILES=("$REPO_ROOT/brewfiles/macos/core.Brewfile")
-
-# Profiles express policy. The terminal/editor baseline stays identical.
-if [[ "$PROFILE" == "core" ]]; then
-  BREWFILES+=("$REPO_ROOT/brewfiles/macos/personal.Brewfile")
-else
-  export HOMEBREW_NO_ANALYTICS=1
-fi
-
-feature_enabled ml && BREWFILES+=("$REPO_ROOT/brewfiles/macos/ml.Brewfile")
+feature_enabled ai && BREWFILES+=("$REPO_ROOT/brewfiles/macos/ai.Brewfile")
 feature_enabled mlsys && BREWFILES+=("$REPO_ROOT/brewfiles/macos/mlsys.Brewfile")
 feature_enabled containers && BREWFILES+=("$REPO_ROOT/brewfiles/macos/containers.Brewfile")
 
-log "profile=$PROFILE features=$(feature_summary) repo=$REPO_ROOT"
+log "features=$(feature_summary) repo=$REPO_ROOT"
 for file in "${BREWFILES[@]}"; do
   bundle_file "$file"
 done
 
 if [[ "$SKIP_CONFIG" != "1" ]]; then
-  CONFIG_ARGS=(--profile "$PROFILE")
+  CONFIG_ARGS=()
   [[ "$DRY_RUN" == "1" ]] && CONFIG_ARGS+=(--dry-run)
   [[ "$FORCE_CONFIG" == "1" ]] && CONFIG_ARGS+=(--force-config)
   bash "$REPO_ROOT/scripts/configure-macos-shell.sh" "${CONFIG_ARGS[@]}"
@@ -312,7 +262,7 @@ if command -v git-lfs >/dev/null 2>&1; then
   git lfs install --skip-repo
 fi
 
-log "installed profile=$PROFILE features=$(feature_summary)"
+log "installed core features=$(feature_summary)"
 printf '\nSystem-provided tools (not reinstalled):\n'
 printf '  git: %s\n' "$(git --version 2>/dev/null || echo 'not found')"
 printf '  ssh: %s\n' "$(ssh -V 2>&1 | head -n 1 || echo 'not found')"
@@ -329,7 +279,7 @@ cat <<'EOF'
 
 Project ownership by design:
   - no Python installation or virtual environment
-  - no PyTorch, MLX, Jupyter, or other framework packages
+  - no PyTorch, MLX, Jupyter, profiling package, or other framework dependency
   - no Miniforge/conda environment
   - no VS Code extensions, account login, API key, SSH key, or model download
   - no Oh My Zsh and no replacement of unmarked personal dotfiles
@@ -337,16 +287,16 @@ Project ownership by design:
 Use uv inside each repository, for example: uv sync
 EOF
 
-if [[ "$PROFILE" == "enterprise" ]]; then
+if feature_enabled ai; then
   cat <<'EOF'
 
-Enterprise profile complete. ChatGPT, Claude Code, and Ollama were intentionally
-omitted; use organization-approved applications and services.
+AI applications are installed. Open Ollama once before using its CLI, sign in to
+ChatGPT/Codex and Claude Code as needed, and restart Ghostty for all shell settings.
 EOF
 else
   cat <<'EOF'
 
-Core profile complete. Open Ollama once before using its CLI, sign in to the AI
-applications you use, and restart Ghostty so the managed zsh command takes effect.
+Core is ready. Add the AI applications later with:
+  ./scripts/bootstrap-macos.sh --features ai
 EOF
 fi
