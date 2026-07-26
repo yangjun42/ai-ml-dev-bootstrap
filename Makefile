@@ -1,22 +1,13 @@
-.PHONY: mac-core mac-restricted mac-ai mac-conda mac-mlsys mac-build mac-containers mac-all mac-config mac-minimal mac-developer mac-workstation mac-personal mac-enterprise verify verify-macos verify-project docker-cpu docker-gpu
+.PHONY: mac-core mac-enterprise mac-ml mac-containers mac-all mac-config verify verify-macos verify-project docker-cpu docker-gpu
 
 mac-core:
 	./scripts/bootstrap-macos.sh
 
-mac-restricted:
-	./scripts/bootstrap-macos.sh --profile restricted
+mac-enterprise:
+	./scripts/bootstrap-macos.sh --profile enterprise
 
-mac-ai:
-	./scripts/bootstrap-macos.sh --features ai
-
-mac-conda:
-	./scripts/bootstrap-macos.sh --features conda
-
-mac-mlsys:
-	./scripts/bootstrap-macos.sh --features mlsys
-
-mac-build:
-	./scripts/bootstrap-macos.sh --features build
+mac-ml:
+	./scripts/bootstrap-macos.sh --features ml
 
 mac-containers:
 	./scripts/bootstrap-macos.sh --features containers
@@ -27,14 +18,6 @@ mac-all:
 # Apply only managed Ghostty/zsh/Starship configuration.
 mac-config:
 	bash ./scripts/configure-macos-shell.sh --profile core
-
-# Backward-compatible aliases from the previous profile design.
-mac-minimal mac-developer mac-personal: mac-core
-
-mac-workstation:
-	./scripts/bootstrap-macos.sh --features build,containers
-
-mac-enterprise: mac-restricted
 
 verify: verify-macos
 
