@@ -7,7 +7,8 @@ Windows 11 / WSL2 与 macOS 的 AI/ML 开发主机 bootstrap 模板。
 - **主机与项目分离**：装机脚本只管理通用软件和主机配置。
 - **uv-first**：Python、虚拟环境、框架和依赖由各项目自行声明。
 - **少量正交模块**：macOS 只有一个 `core`，另有三个可选 feature。
-- **安全重复执行**：已满足的软件跳过，个人未托管配置不静默覆盖。
+- **单一配置来源**：Ghostty 主配置和 `~/.zshrc` 由 repo 管理，首次接管只备份一次。
+- **安全重复执行**：已满足的软件跳过，后续运行不会重复生成备份或初始化区块。
 
 > 本仓库不替代组织的安全、合规和许可证审查。
 
@@ -25,7 +26,7 @@ cd ai-ml-dev-bootstrap
 ./scripts/bootstrap-macos.sh --features ai
 ```
 
-企业或受限设备通常只安装共享开发基线：
+企业管理设备或暂时不安装公共 AI 应用的 Mac：
 
 ```bash
 ./scripts/bootstrap-macos.sh
@@ -62,7 +63,7 @@ project  = 自己管理 Python、框架、环境和锁文件
 | `containers` | Colima、Docker CLI、Docker Compose；不自动启动 |
 | `all` | `ai,mlsys,containers` |
 
-没有 profile、level 或旧名称兼容层。
+没有 profile、level 或旧接口兼容层。
 
 ### `core` 包含什么
 
@@ -85,10 +86,16 @@ Git 与 OpenSSH 使用 macOS / Apple Command Line Tools 提供的版本，不通
 Ghostty dark  : TokyoNight Moon
 Ghostty light : TokyoNight Day
 Starship      : Jetpack
-Shell         : /bin/zsh -l
+Shell         : macOS 登录 shell（现代 Mac 通常为 zsh）
 ```
 
-Ghostty 显式启动 zsh，因此目录服务账户即使仍记录 `/bin/bash`，也能正确读取 `~/.zshrc`。
+Ghostty 配置中保留了这行提示，但默认注释：
+
+```ini
+# command = /bin/zsh -l
+```
+
+只有在目录服务或企业账户仍启动 Bash、导致 `~/.zshrc` 不加载时，才取消注释。
 
 ### `ai`
 
@@ -104,18 +111,9 @@ Claude Code CLI
 Ollama App
 ```
 
-不会自动：
+不会自动登录账户、写入 API key、下载模型、创建 Python 环境或安装框架。
 
-```text
-登录账户
-写入 API key
-下载 Ollama 模型
-安装 llama.cpp
-创建 Python 环境
-安装 PyTorch、MLX、Jupyter 或 Transformers
-```
-
-Ollama 是默认本地模型运行器。`llama.cpp` 与其本地推理功能高度重叠，只在需要直接操作 GGUF、量化、底层 server 参数或专项 benchmark 时再单独安装。
+Ollama 是本仓库唯一管理的本地模型运行器。`llama.cpp` 与日常本地推理职责高度重叠，只在需要直接操作 GGUF、量化、底层 server 参数或专项 benchmark 时手动安装。FFmpeg 也不进入默认模块。
 
 ### `mlsys`
 
@@ -154,7 +152,57 @@ devtheme catppuccin   # Mocha/Latte + Catppuccin Powerline
 devtheme gruvbox      # Gruvbox Dark/Light Hard + Gruvbox Rainbow
 ```
 
-切换后在 Ghostty 中按 `Cmd+Shift+,` 重新加载。
+切换后在 Ghostty 中按 `Cmd+Shift+,` 重新加载。首次替换自定义 Starship 配置时只创建一个：
+
+```text
+~/.config/ai-ml-dev-bootstrap/backups/starship.toml.original
+```
+
+后续切换不会重复备份。
+
+### 从旧 minimal 或手工配置迁移
+
+在旧版本安装过 minimal，并手工配置过 Ghostty / Starship 时，直接运行：
+
+```bash
+./scripts/bootstrap-macos.sh --features ai
+```
+
+行为如下：
+
+1. `brew bundle check` 跳过已经安装的内容，只补齐 core 缺少的软件。
+2. 默认不升级已安装软件；只有 `--upgrade` 才升级。
+3. Ghostty 主配置首次被 core 接管时备份为：
+
+   ```text
+   ~/.config/ai-ml-dev-bootstrap/backups/config.ghostty.original
+   ```
+
+4. 旧 `~/.zshrc` 首次被接管时备份为：
+
+   ```text
+   ~/.config/ai-ml-dev-bootstrap/backups/zshrc.original
+   ```
+
+5. 如果 Ghostty 的 macOS Application Support 路径还有第二份配置，它会先备份为 `ghostty-macos-config.original`，再移除该重复来源。
+6. 现有 `~/.config/starship.toml` 保留，不会被 bootstrap 覆盖。
+7. 现有 `appearance.ghostty` 保留，因此你当前 TokyoNight 选择不会被重置。
+8. 第二次及以后运行不会再创建同类备份，也不会叠加 zsh 初始化区块。
+
+Repo 完整管理：
+
+```text
+~/.zshrc
+~/.config/ghostty/config.ghostty
+~/.local/bin/devtheme
+```
+
+机器专属内容放在以下文件，bootstrap 永不覆盖：
+
+```text
+~/.config/zsh/local.zsh
+~/.config/ghostty/local.ghostty
+```
 
 ### Python / ML 项目
 
@@ -187,9 +235,6 @@ uv add numpy pandas scikit-learn
 # 只安装软件，不修改 Ghostty/zsh
 ./scripts/bootstrap-macos.sh --features ai --skip-config
 
-# 备份并采用仓库的 Ghostty 主配置
-./scripts/bootstrap-macos.sh --features ai --force-config
-
 # 只更新终端配置
 ./scripts/configure-macos-shell.sh
 ```
@@ -198,10 +243,10 @@ uv add numpy pandas scikit-learn
 
 - 先运行 `brew bundle check`，已满足的 manifest 整体跳过；
 - 默认使用 `--no-upgrade`；
-- 只维护 `.zshrc` 中带 marker 的 `macos-core` block；
-- 保留未标记的个人配置；
-- 不覆盖未托管或 symlink 的 Ghostty 配置，而是生成 review candidate；
-- 不在重复执行时重置主题或 Starship 选择。
+- 对已有主配置只保留固定名称的一次性 `.original` 备份；
+- 使用一个 repo 管理的 `.zshrc`，避免新旧初始化逻辑同时存在；
+- 保留 Starship 活动配置、Ghostty appearance 以及两个 `local.*` override；
+- 重复执行时不产生额外备份、不重置主题、不创建 Python 环境。
 
 详细说明见 [`docs/MACOS.md`](docs/MACOS.md)。
 
@@ -240,7 +285,7 @@ Set-ExecutionPolicy -Scope Process Bypass -Force
 make verify-macos
 ```
 
-macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、重复执行、主题切换和用户配置保留。
+macOS CI 在 Linux 与 macOS runner 上验证 shell 语法、manifest 边界、一次性迁移、重复执行、主题切换和配置来源唯一性。
 
 ## 目录结构
 
