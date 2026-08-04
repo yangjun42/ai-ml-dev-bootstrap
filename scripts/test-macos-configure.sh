@@ -160,13 +160,34 @@ symlink_backup_count="$(count_backups "$SYMLINK_HOME")"
 configure "$SYMLINK_HOME"
 test "$symlink_backup_count" = "$(count_backups "$SYMLINK_HOME")"
 
-# Core load order: compinit before navigation, local overrides before the final
-# syntax-highlighting integration.
+# Core load order: Homebrew before completion, completion before navigation,
+# and local overrides before the final syntax-highlighting integration.
+shellenv_line="$(grep -n '/opt/homebrew/bin/brew shellenv' "$FRESH_HOME/.zshrc" | head -n 1 | cut -d: -f1)"
 compinit_line="$(grep -n 'compinit' "$FRESH_HOME/.zshrc" | head -n 1 | cut -d: -f1)"
 zoxide_line="$(grep -n 'zoxide init zsh' "$FRESH_HOME/.zshrc" | head -n 1 | cut -d: -f1)"
 local_line="$(grep -n 'local.zsh' "$FRESH_HOME/.zshrc" | tail -n 1 | cut -d: -f1)"
 syntax_line="$(grep -n 'zsh-syntax-highlighting.zsh' "$FRESH_HOME/.zshrc" | tail -n 1 | cut -d: -f1)"
+test "$shellenv_line" -lt "$compinit_line"
 test "$compinit_line" -lt "$zoxide_line"
 test "$local_line" -lt "$syntax_line"
+
+# Regression: `brew` being discoverable later in PATH must not suppress
+# shellenv. On the macOS runner, confirm Homebrew ends up ahead of /usr/bin.
+if grep -Fq 'if (( ! $+commands[brew] )); then' "$FRESH_HOME/.zshrc"; then
+  echo "Homebrew shellenv must not depend on command discovery order" >&2
+  exit 1
+fi
+
+if [[ "$(uname -s)" == "Darwin" && -x /opt/homebrew/bin/brew ]]; then
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin" \
+  HOME="$FRESH_HOME" \
+  CORE_ZSH="$FRESH_HOME/.zshrc" \
+    zsh -dfc '
+      source "$CORE_ZSH"
+      brew_index=${path[(Ie)/opt/homebrew/bin]}
+      system_index=${path[(Ie)/usr/bin]}
+      (( brew_index > 0 && system_index > 0 && brew_index < system_index ))
+    '
+fi
 
 echo "macOS core configuration integration tests passed"
