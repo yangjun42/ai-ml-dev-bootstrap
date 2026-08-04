@@ -3,16 +3,16 @@
 #   ~/.config/zsh/local.zsh
 # That optional file is loaded before the final interactive typing helpers.
 
-# Make a fresh Homebrew installation available in new zsh sessions.
-if (( ! $+commands[brew] )); then
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  fi
+# Initialise Homebrew before command discovery and completion. Use the default
+# absolute prefixes because `brew` may already be discoverable later in PATH;
+# `brew shellenv` is idempotent and puts Homebrew bin/sbin ahead of /usr/bin.
+if [[ -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+elif [[ -x /usr/local/bin/brew ]]; then
+  eval "$(/usr/local/bin/brew shellenv)"
 fi
 
-# Keep per-user commands first without accumulating duplicate PATH entries.
+# Keep per-user commands first and remove duplicate PATH entries.
 typeset -U path PATH
 path=("$HOME/.local/bin" $path)
 
